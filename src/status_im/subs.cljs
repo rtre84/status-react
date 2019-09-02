@@ -427,6 +427,13 @@
    public-key))
 
 (re-frame/reg-sub
+ :multiaccount/default-address
+ :<- [:multiaccount]
+ (fn [{:keys [accounts]}]
+   (ethereum/normalized-address
+    (:address (ethereum/get-default-account accounts)))))
+
+(re-frame/reg-sub
  :sign-in-enabled?
  :<- [:multiaccounts/login]
  (fn [{:keys [password]}]
@@ -1838,30 +1845,42 @@
    (:show-name? multiaccount)))
 
 (re-frame/reg-sub
- :ens.registration/screen
+ :ens/search-screen
+ :<- [:ens/registration]
+ (fn [{:keys [custom-domain? username state]}]
+   {:state          state
+    :username       username
+    :custom-domain? custom-domain?}))
+
+(defn- ens-amount-label
+  [chain-id]
+  (case chain-id
+    3 "50 STT"
+    1 "10 SNT"
+    ""))
+
+(re-frame/reg-sub
+ :ens/checkout-screen
  :<- [:ens/registration]
  :<- [:ens.stateofus/registrar]
- :<- [:multiaccount]
+ :<- [:multiaccount/default-address]
+ :<- [:multiaccount/public-key]
  :<- [:chain-id]
- (fn [[{:keys [custom-domain? username-candidate registering?] :as ens}
-       registrar {:keys [accounts public-key]} chain-id]]
-   (let [amount (case chain-id
-                  3 50
-                  1 10
-                  0)
-         amount-label (str amount (case chain-id
-                                    3 " STT"
-                                    1 " SNT"
-                                    ""))]
-     {:state          (get-in ens [:states username-candidate])
-      :registering?   registering?
-      :username       username-candidate
-      :custom-domain? (or custom-domain? false)
-      :contract       registrar
-      :address        (:address (ethereum/get-default-account accounts))
-      :public-key     public-key
-      :amount amount
-      :amount-label amount-label})))
+ (fn [[{:keys [custom-domain? username]}
+       registrar default-address public-key chain-id]]
+   {:address        default-address
+    :username       username
+    :public-key     public-key
+    :custom-domain? custom-domain?
+    :contract       registrar
+    :amount-label   (ens-amount-label chain-id)}))
+
+(re-frame/reg-sub
+ :ens/confirmation-screen
+ :<- [:ens/registration]
+ (fn [{:keys [username state] :as ens}]
+   {:state          state
+    :username       username}))
 
 (re-frame/reg-sub
  :ens.name/screen
