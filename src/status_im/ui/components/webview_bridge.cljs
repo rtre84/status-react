@@ -3,14 +3,16 @@
             [status-im.react-native.js-dependencies :as js-dependencies]
             [reagent.core :as reagent.core]
             [status-im.utils.platform :as platform]
-            [status-im.utils.config :as config]))
+            [status-im.utils.config :as config]
+            ["react-native" :as react-native]
+            ["react-native-webview-bridge" :default webview-bridge]))
 
 (def webview-bridge-class
   (memoize
    (fn []
-     (reagent/adapt-react-class (.-default js-dependencies/webview-bridge)))))
+     (reagent/adapt-react-class webview-bridge))))
 
-(defn module [] (.-WebViewBridgeModule (.-NativeModules js-dependencies/react-native)))
+(defn module [] (.-WebViewBridgeModule (.-NativeModules react-native)))
 
 (defn webview-bridge [{:keys [dapp? dapp-name] :as opts}]
   (if (and config/cached-webviews-enabled? platform/android? dapp?)

@@ -21,7 +21,8 @@
             [status-im.utils.types :as types]
             [status-im.utils.universal-links.core :as universal-links]
             [taoensso.timbre :as log]
-            [status-im.signing.core :as signing]))
+            [status-im.signing.core :as signing]
+            ["eth-phishing-detect" :as eth-phishing-detect]))
 
 (fx/defn update-browser-option
   [{:keys [db]} option-key option-value]
@@ -57,7 +58,7 @@
 
 (defn check-if-phishing-url [{:keys [history history-index] :as browser}]
   (let [history-host (http/url-host (try (nth history history-index) (catch js/Error _)))]
-    (cond-> browser history-host (assoc :unsafe? (js-dependencies/phishing-detect history-host)))))
+    (cond-> browser history-host (assoc :unsafe? (eth-phishing-detect history-host)))))
 
 (defn- content->hash [hex]
   (when (and hex (not= hex "0x"))

@@ -9,12 +9,15 @@
             status-im.transport.impl.send
             [status-im.react-native.js-dependencies :as js-dependencies]
             [status-im.utils.logging.core :as utils.logs]
-            cljs.core.specs.alpha))
+            cljs.core.specs.alpha
+            ["react-native" :as react-native]))
 
 (if js/goog.DEBUG
-  (.ignoreWarnings (.-YellowBox js-dependencies/react-native) #js ["re-frame: overwriting"
-                                                                   ;;TODO: remove this once reagent has been updated to a version that doesn't use componentWillUpdate
-                                                                   "Warning: componentWillUpdate is deprecated and will be removed in the next major version. Use componentDidUpdate instead. As a temporary workaround, you can rename to UNSAFE_componentWillUpdate."])
+  (.ignoreWarnings (.-YellowBox react-native) #js ["re-frame: overwriting"
+                                                   ;;TODO: remove this once reagent has been updated to a version that doesn't use componentWillMount
+                                                   "componentWillMount is deprecated and will be removed in the next major version. Use componentDidMount instead. As a temporary workaround, you can rename to UNSAFE_componentWillMount."
+                                                   ;;TODO: remove this once reagent has been updated to a version that doesn't use componentWillUpdate
+                                                   "componentWillUpdate is deprecated and will be removed in the next major version. Use componentDidUpdate instead. As a temporary workaround, you can rename to UNSAFE_componentWillUpdate."])
   (aset js/console "disableYellowBox" true))
 
 (defn init [app-root]

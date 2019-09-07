@@ -2,7 +2,6 @@
 
 (def Chance           (js/require "chance"))
 (def emojis           (js/require "emojilib"))
-(def phishing-detect  (js/require "eth-phishing-detect"))
 (def identicon-js     (js/require "identicon.js"))
 (def Web3             (js/require "web3"))
 (def web3-prototype   (.-prototype Web3))

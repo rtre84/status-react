@@ -1,14 +1,15 @@
 (ns status-im.utils.utils
   (:require [status-im.i18n :as i18n]
-            [status-im.react-native.js-dependencies :as rn-dependencies]
             [re-frame.core :as re-frame]
-            [status-im.utils.platform :as platform]))
+            [status-im.utils.platform :as platform]
+            ["react-native" :as react-native]
+            ["react-native-background-timer" :default background-timer]))
 
 (defn show-popup
   ([title content]
    (show-popup title content nil))
   ([title content on-dismiss]
-   (.alert (.-Alert rn-dependencies/react-native)
+   (.alert (.-Alert react-native)
            title
            content
            (clj->js
@@ -20,7 +21,7 @@
              (clj->js {:cancelable false})))))
 
 (defn vibrate []
-  #_(.vibrate (.-Vibration rn-dependencies/react-native)))
+  #_(.vibrate (.-Vibration react-native)))
 
 (re-frame/reg-fx
  :utils/show-popup
@@ -30,7 +31,7 @@
 (defn show-confirmation
   [{:keys [title content confirm-button-text on-dismiss on-accept on-cancel cancel-button-text
            extra-options]}]
-  (.alert (.-Alert rn-dependencies/react-native)
+  (.alert (.-Alert react-native)
           title
           content
           ;; Styles are only relevant on iOS. On Android first button is 'neutral' and second is 'positive'
@@ -61,7 +62,7 @@
   ([title content on-accept]
    (show-question title content on-accept nil))
   ([title content on-accept on-cancel]
-   (.alert (.-Alert rn-dependencies/react-native)
+   (.alert (.-Alert react-native)
            title
            content
            (clj->js
@@ -84,7 +85,7 @@
 (defn set-timeout [cb ms]
   (if platform/desktop?
     (js/setTimeout cb ms)
-    (.setTimeout rn-dependencies/background-timer cb ms)))
+    (.setTimeout background-timer cb ms)))
 
 (defn unread-messages-count
   "display actual # if less than 1K, round to the lowest thousand if between 1 and 10K, otherwise 10K+ for anything larger"
@@ -109,14 +110,14 @@
 (defn clear-timeout [id]
   (if platform/desktop?
     (js/clearTimeout id)
-    (.clearTimeout rn-dependencies/background-timer id)))
+    (.clearTimeout background-timer id)))
 
 (defn set-interval [cb ms]
   (if platform/desktop?
     (js/setInterval cb ms)
-    (.setInterval rn-dependencies/background-timer cb ms)))
+    (.setInterval background-timer cb ms)))
 
 (defn clear-interval [id]
   (if platform/desktop?
     (js/clearInterval id)
-    (.clearInterval rn-dependencies/background-timer id)))
+    (.clearInterval background-timer id)))

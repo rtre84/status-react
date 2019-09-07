@@ -18,9 +18,8 @@
             [status-im.utils.utils :as utils]
             [status-im.ui.components.colors :as colors]
             [status-im.ui.screens.hardwallet.setup.styles :as styles]
-            [status-im.utils.security :as security]))
-
-(defonce event-emitter (.-DeviceEventEmitter js-dependencies/react-native))
+            [status-im.utils.security :as security]
+            ["react-native" :refer [DeviceEventEmitter]]))
 
 (defview secret-keys []
   (letsubs [secrets [:hardwallet-secrets]]
@@ -379,7 +378,7 @@
                             (when @listener
                               (.removeListener @listener))
                             (reset! listener
-                                    (.addListener event-emitter
+                                    (.addListener DeviceEventEmitter
                                                   "keycardInstallationProgress"
                                                   (fn [params]
                                                     (when @progress-bar

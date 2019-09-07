@@ -1,15 +1,13 @@
 (ns status-im.notifications.background
   (:require [goog.object :as object]
             [re-frame.core :as re-frame]
-            [status-im.react-native.js-dependencies :as rn]
             [status-im.notifications.core :as notifications]
             [status-im.i18n :as i18n]
             [cljs.core.async :as async]
             [taoensso.timbre :as log]
-            [status-im.utils.platform :as platform]))
-
-(when-not platform/desktop?
-  (def firebase (object/get rn/react-native-firebase "default")))
+            [status-im.utils.platform :as platform]
+            ;;TODO not on plateform desktop
+            ["react-native-firebase" :default firebase]))
 
 (defn message-handler-fn []
   ;; message-js is firebase.messaging.RemoteMessage: https://github.com/invertase/react-native-firebase-docs/blob/master/docs/messaging/reference/RemoteMessage.md

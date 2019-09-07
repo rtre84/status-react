@@ -1,7 +1,6 @@
 (ns status-im.notifications.core
   (:require [goog.object :as object]
             [re-frame.core :as re-frame]
-            [status-im.react-native.js-dependencies :as rn]
             [taoensso.timbre :as log]
             [status-im.i18n :as i18n]
             [status-im.multiaccounts.core :as multiaccounts]
@@ -15,7 +14,9 @@
             [status-im.utils.fx :as fx]
             [status-im.utils.platform :as platform]
             [status-im.utils.utils :as utils]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            ;;TODO not on plateform desktop
+            ["react-native-firebase" :as react-native-firebase]))
 
 ;; Work in progress namespace responsible for push notifications and interacting
 ;; with Firebase Cloud Messaging.
@@ -27,7 +28,7 @@
 
 (when-not platform/desktop?
 
-  (def firebase (object/get rn/react-native-firebase "default")))
+  (def firebase (object/get react-native-firebase "default")))
 
 ;; NOTE: Only need to explicitly request permissions on iOS.
 (defn request-permissions []
@@ -92,7 +93,7 @@
     [{:keys [db] :as cofx} contact-pubkey-or-hash]
     "Tries to deanonymize a given contact pubkey hash by looking up the
     full pubkey (if db is unlocked) in :multiaccount and, if not found,
-    in :contacts/contacts. 
+    in :contacts/contacts.
     Returns original value if not a hash (e.g. already a public key)."
     (if (and contact-pubkey-or-hash
              (= (count contact-pubkey-or-hash) pn-pubkey-hash-length))

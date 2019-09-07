@@ -5,11 +5,11 @@
             [status-im.utils.fx :as fx]
             [status-im.ui.components.colors :as colors]
             [status-im.native-module.core :as status]
-            [status-im.react-native.js-dependencies :as rn]))
+            ["react-native-touch-id" :default touchid]))
 
 ;; currently, for android, react-native-touch-id
 ;; is not returning supported biometric type
-;; defaulting to :fingerprint 
+;; defaulting to :fingerprint
 (def android-default-support :fingerprint)
 
 ;;; android blacklist based on device info:
@@ -64,7 +64,7 @@
      :bioauth-message (get-error-message code)}))
 
 (defn- do-get-supported [callback]
-  (-> (.isSupported rn/touchid)
+  (-> (.isSupported touchid)
       (.then #(callback (or (keyword %) android-default-support)))
       (.catch #(callback nil))))
 
@@ -79,7 +79,7 @@
   ([cb]
    (authenticate cb nil))
   ([cb {:keys [reason ios-fallback-label]}]
-   (-> (.authenticate rn/touchid reason (authenticate-options ios-fallback-label))
+   (-> (.authenticate touchid reason (authenticate-options ios-fallback-label))
        (.then #(cb success-result))
        (.catch #(cb (generate-error-result %))))))
 

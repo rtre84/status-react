@@ -2,10 +2,11 @@
   (:require [re-frame.core :as re-frame]
             [status-im.react-native.js-dependencies :as js-dependencies]
             [status-im.utils.config :as config]
+            ["react-native" :as react-native]
+            ["react-native-status-keycard" :default keycard]
             [status-im.utils.platform :as platform]))
 
-(defonce keycard (.-default js-dependencies/status-keycard))
-(defonce event-emitter (.-DeviceEventEmitter js-dependencies/react-native))
+(defonce event-emitter (.-DeviceEventEmitter react-native))
 
 (defn- error-object->map [object]
   {:code  (.-code object)

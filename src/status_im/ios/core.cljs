@@ -6,6 +6,9 @@
             status-im.ui.screens.events
             status-im.subs
             [status-im.react-native.js-dependencies :as rn-dependencies]
+            ["react-native-languages" :default react-native-languages]
+            ["react-native-shake" :as react-native-shake]
+            ["react-native-screens" :as react-native-screens]
             [status-im.ui.screens.views :as views]
             [status-im.ui.components.react :as react]
             [status-im.core :as core]
@@ -38,10 +41,10 @@
                       #(when-not (= 0 @keyboard-height)
                          (dispatch [:set :keyboard-height 0])))
         (.hide react/splash-screen)
-        (.useScreens rn-dependencies/react-native-screens)
+        (.useScreens react-native-screens)
         (.addEventListener react/app-state "change" app-state-change-handler)
-        (.addEventListener rn-dependencies/react-native-languages "change" on-languages-change)
-        (.addEventListener rn-dependencies/react-native-shake
+        (.addEventListener react-native-languages "change" on-languages-change)
+        (.addEventListener react-native-shake
                            "ShakeEvent"
                            on-shake)
         (dispatch [:set-initial-props (reagent/props this)]))
@@ -49,7 +52,7 @@
       (fn []
         (.stop react/http-bridge)
         (.removeEventListener react/app-state "change" app-state-change-handler)
-        (.removeEventListener rn-dependencies/react-native-languages "change" on-languages-change))
+        (.removeEventListener react-native-languages "change" on-languages-change))
       :display-name "root"
       :reagent-render views/main})))
 

@@ -7,13 +7,15 @@
             [status-im.utils.core :as utils.core]
             [status-im.utils.platform :as platform]
             [status-im.i18n :as i18n]
-            [status-im.react-native.js-dependencies :as js-dependencies]
+            ["react-native" :as react-native]
+            ["dismissKeyboard" :as dismiss-keyboard]
+            ["react-native-image-crop-picker" :default image-picker]
             [status-im.ui.components.colors :as colors]
             [status-im.ui.components.typography :as typography]))
 
 (defn get-react-property [name]
-  (if js-dependencies/react-native
-    (or (object/get js-dependencies/react-native name) {})
+  (if react-native
+    (or (object/get react-native name) {})
     #js {}))
 
 (defn adapt-class [class]
@@ -23,10 +25,10 @@
 (defn get-class [name]
   (adapt-class (get-react-property name)))
 
-(def native-modules (.-NativeModules js-dependencies/react-native))
-(def device-event-emitter (.-DeviceEventEmitter js-dependencies/react-native))
+(def native-modules (.-NativeModules react-native))
+(def device-event-emitter (.-DeviceEventEmitter react-native))
 
-(def dismiss-keyboard! js-dependencies/dismiss-keyboard)
+(def dismiss-keyboard! dismiss-keyboard)
 
 (def splash-screen (.-SplashScreen native-modules))
 
@@ -74,8 +76,8 @@
 
 (def modal (get-class "Modal"))
 
-(def pan-responder (.-PanResponder js-dependencies/react-native))
-(def animated (.-Animated js-dependencies/react-native))
+(def pan-responder (.-PanResponder react-native))
+(def animated (.-Animated react-native))
 
 (def animated-view-class
   (reagent/adapt-react-class (.-View animated)))
@@ -83,10 +85,10 @@
 (defn animated-view [props & content]
   (vec (conj content props animated-view-class)))
 
-(def dimensions (.-Dimensions js-dependencies/react-native))
-(def keyboard (.-Keyboard js-dependencies/react-native))
-(def linking (.-Linking js-dependencies/react-native))
-(def desktop-notification (.-DesktopNotification (.-NativeModules js-dependencies/react-native)))
+(def dimensions (.-Dimensions react-native))
+(def keyboard (.-Keyboard react-native))
+(def linking (.-Linking react-native))
+(def desktop-notification (.-DesktopNotification (.-NativeModules react-native)))
 
 (def max-font-size-multiplier 1.25)
 
@@ -132,30 +134,30 @@
   [options text]
   (let [input-ref (atom nil)]
     (reagent/create-class
-      {:component-will-unmount #(when @input-ref
-                                  (swap! text-input-refs disj @input-ref))
-       :reagent-render
-       (fn [options text]
-         [text-input-class
-          (merge
-            {:underline-color-android  :transparent
-             :max-font-size-multiplier max-font-size-multiplier
-             :placeholder-text-color   colors/text-gray
-             :placeholder              (i18n/label :t/type-a-message)
-             :ref                      (fn [r] 
-                                         (if r
-                                           (when (nil? @input-ref)
-                                             (swap! text-input-refs conj r))
-                                           (when @input-ref
-                                             (swap! text-input-refs disj @input-ref)))
-                                         (reset! input-ref r)
-                                         (when (:ref options) 
-                                           ((:ref options) r)))
-             :value                    text}
-            (-> options
-                (dissoc :ref)
-                (update :style typography/get-style)
-                (update :style dissoc :line-height)))])})))
+     {:component-will-unmount #(when @input-ref
+                                 (swap! text-input-refs disj @input-ref))
+      :reagent-render
+      (fn [options text]
+        [text-input-class
+         (merge
+          {:underline-color-android  :transparent
+           :max-font-size-multiplier max-font-size-multiplier
+           :placeholder-text-color   colors/text-gray
+           :placeholder              (i18n/label :t/type-a-message)
+           :ref                      (fn [r]
+                                       (if r
+                                         (when (nil? @input-ref)
+                                           (swap! text-input-refs conj r))
+                                         (when @input-ref
+                                           (swap! text-input-refs disj @input-ref)))
+                                       (reset! input-ref r)
+                                       (when (:ref options)
+                                         ((:ref options) r)))
+           :value                    text}
+          (-> options
+              (dissoc :ref)
+              (update :style typography/get-style)
+              (update :style dissoc :line-height)))])})))
 
 (defn i18n-text
   [{:keys [style key]}]
@@ -199,9 +201,6 @@
    (map value->picker-item data)))
 
 ;; Image picker
-
-(def image-picker-class js-dependencies/image-crop-picker)
-
 (defn show-access-error [o]
   (when (= "E_PERMISSION_MISSING" (object/get o "code"))
     (utils/show-popup (i18n/label :t/error)
@@ -211,31 +210,22 @@
   ([images-fn]
    (show-image-picker images-fn nil))
   ([images-fn media-type]
-   (let [image-picker (.-default image-picker-class)]
-     (-> image-picker
-         (.openPicker (clj->js {:multiple false :mediaType (or media-type "any")}))
-         (.then images-fn)
-         (.catch show-access-error)))))
-
-;; Net info
-
-(def net-info (.-default js-dependencies/net-info))
+   (-> image-picker
+       (.openPicker (clj->js {:multiple false :mediaType (or media-type "any")}))
+       (.then images-fn)
+       (.catch show-access-error))))
 
 ;; Clipboard
 
 (def sharing
-  (.-Share js-dependencies/react-native))
+  (.-Share react-native))
 
 (defn copy-to-clipboard [text]
-  (.setString (.-Clipboard js-dependencies/react-native) text))
+  (.setString (.-Clipboard react-native) text))
 
 (defn get-from-clipboard [clbk]
-  (let [clipboard-contents (.getString (.-Clipboard js-dependencies/react-native))]
+  (let [clipboard-contents (.getString (.-Clipboard react-native))]
     (.then clipboard-contents #(clbk %))))
-
-;; HTTP Bridge
-
-(def http-bridge js-dependencies/http-bridge)
 
 ;; KeyboardAvoidingView
 

@@ -2,14 +2,11 @@
   (:require [goog.object :as object]
             [reagent.core :as reagent]
             [clojure.walk :as walk]
-            [status-im.react-native.js-dependencies :as js-dependencies]))
-
-(def default-camera
-  (-> js-dependencies/camera
-      (object/get "RNCamera")))
+            [status-im.react-native.js-dependencies :as js-dependencies]
+            ["react-native-camera" :refer (RNCamera)]))
 
 (defn- constants [t]
-  (-> default-camera
+  (-> RNCamera
       (object/get "Constants")
       (object/get t)
       (js->clj)
@@ -20,15 +17,15 @@
 (def torch-modes (constants "FlashMode"))
 
 (defn set-torch [state]
-  (set! (.-flashMode default-camera) (get torch-modes state)))
+  (set! (.-flashMode RNCamera) (get torch-modes state)))
 
 (defn request-access-ios [then else]
-  (-> (.checkVideoAuthorizationStatus default-camera)
+  (-> (.checkVideoAuthorizationStatus RNCamera)
       (.then (fn [allowed?] (if allowed? (then) (else))))
       (.catch else)))
 
 (defn camera [props]
-  (reagent/create-element default-camera (clj->js (merge {:inverted true} props))))
+  (reagent/create-element RNCamera (clj->js (merge {:inverted true} props))))
 
 (defn get-qr-code-data [code]
   (.-data code))

@@ -18,7 +18,7 @@
    [status-im.ui.components.tabbar.core :as tabbar]
    [status-im.ui.components.status-bar.view :as status-bar]
    [status-im.ui.components.tabbar.styles :as tabs.styles]
-   [status-im.react-native.js-dependencies :as js-dependencies]))
+   ["react-navigation" :as react-navigation]))
 
 (defonce view-id (reagent.core/atom nil))
 
@@ -210,7 +210,7 @@
   [tabbar/tabbar nav view-id])
 
 (defn app-container [navigator]
-  (.createAppContainer js-dependencies/react-navigation navigator))
+  (.createAppContainer react-navigation navigator))
 
 (defn get-main-component [view-id two-pane?]
   (log/debug :component view-id)
