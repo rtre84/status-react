@@ -12,7 +12,9 @@
             cljs.core.specs.alpha))
 
 (if js/goog.DEBUG
-  (.ignoreWarnings (.-YellowBox js-dependencies/react-native) #js ["re-frame: overwriting"])
+  (.ignoreWarnings (.-YellowBox js-dependencies/react-native) #js ["re-frame: overwriting"
+                                                                   ;;TODO: remove this once reagent has been updated to a version that doesn't use componentWillUpdate
+                                                                   "Warning: componentWillUpdate is deprecated and will be removed in the next major version. Use componentDidUpdate instead. As a temporary workaround, you can rename to UNSAFE_componentWillUpdate."])
   (aset js/console "disableYellowBox" true))
 
 (defn init [app-root]
