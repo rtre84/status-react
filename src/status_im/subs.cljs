@@ -332,6 +332,12 @@
  :height)
 
 (re-frame/reg-sub
+ :dimensions/small-screen?
+ :<- [:dimensions/window-height]
+ (fn [height]
+   (< height 550)))
+
+(re-frame/reg-sub
  :get-screen-params
  :<- [:screen-params]
  :<- [:view-id]
