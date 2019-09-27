@@ -10,7 +10,7 @@ let
 
   androidComposition = androidenv.composeAndroidPackages {
     toolsVersion = "26.1.1";
-    platformToolsVersion = "28.0.2";
+    platformToolsVersion = "28.0.1";
     buildToolsVersions = [ "28.0.3" ];
     includeEmulator = false;
     platformVersions = [ "28" ];
