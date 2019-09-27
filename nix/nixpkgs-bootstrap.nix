@@ -3,8 +3,8 @@
   pkgs ? (import ((import <nixpkgs> { }).fetchFromGitHub {
     owner = "status-im";
     repo = "nixpkgs";
-    rev = "db492b61572251c2866f6b5e6e94e9d70e7d3021";
-    sha256 = "188r7gbcrxi20nj6xh9bmdf3lbjwb94v9s0wpacl7q39g1fca66h";
+    rev = "da364619549c337e6e8d9d45ddd2767a3d5cf574";
+    sha256 = "0qn17ryd9vy8l9h3adb0lzhssn07akh91r5vkddxiakj1nabisks";
     name = "nixpkgs-source";
   })) { inherit config; } }:
 
