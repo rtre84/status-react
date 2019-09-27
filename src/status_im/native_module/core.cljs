@@ -246,6 +246,10 @@
   [rpc-endpoint contract-address on-result]
   (.getNodesFromContract (status) rpc-endpoint contract-address on-result))
 
+(defn verify-ens-name
+  [ens-name public-key rpc-endpoint contract-address on-result]
+  (.verifyENSName (status) ens-name public-key rpc-endpoint contract-address on-result))
+
 (defn rooted-device? [callback]
   (cond
     ;; we assume that iOS is safe by default

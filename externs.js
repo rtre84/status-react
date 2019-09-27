@@ -161,6 +161,7 @@ var TopLevel = {
     "getNetwork" : function () {},
     "getNode" : function () {},
     "getNodesFromContract" : function () {},
+    "verifyENSName" : function () {},
     "getPublicKey" : function () {},
     "getSecurityLevel" : function () {},
     "getString" : function () {},

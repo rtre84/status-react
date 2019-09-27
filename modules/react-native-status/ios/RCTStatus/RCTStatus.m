@@ -220,13 +220,26 @@ RCT_EXPORT_METHOD(updateMailservers:(NSString *)enodes
 }
 
 //////////////////////////////////////////////////////////////////// getNodesFromContract
-RCT_EXPORT_METHOD(getNodesFromContract:(NSString *)url
-                               address:(NSString *) address
-                              callback:(RCTResponseSenderBlock)callback) {
-  NSString* result = StatusgoGetNodesFromContract(url, address);
+RCT_EXPORT_METHOD(getNodesFromContract:(NSString *)rpcEndpoint
+                  contractAddress:(NSString *) contractAddress
+                  callback:(RCTResponseSenderBlock)callback) {
+  NSString* result = StatusgoGetNodesFromContract(rpcEndpoint, contractAddress);
   callback(@[result]);
 #if DEBUG
   NSLog(@"GetNodesFromContract() method called");
+#endif
+}
+
+//////////////////////////////////////////////////////////////////// verifyENSName
+RCT_EXPORT_METHOD(verifyENSName:(NSString *)rpcEndpoint
+                                ensName:(NSString *) ensName
+                                pubKey:(NSString *) pubKey
+                                contractAddress:(NSString *) contractAddress
+                                callback:(RCTResponseSenderBlock)callback) {
+  NSString* result = StatusgoVerifyENSName(ensName, pubKey, rpcEndpoint, contractAddress);
+  callback(@[result]);
+#if DEBUG
+  NSLog(@"VerifyENSName() method called");
 #endif
 }
 

@@ -54,7 +54,8 @@ public:
     Q_INVOKABLE void signGroupMembership(QString content, double callbackId);
     Q_INVOKABLE void extractGroupMembershipSignatures(QString signatures, double callbackId);
     Q_INVOKABLE void updateMailservers(QString enodes, double callbackId);
-    Q_INVOKABLE void getNodesFromContract(QString url, QString address, double callbackId);
+    Q_INVOKABLE void getNodesFromContract(QString rpcEndpoint, QString contractAddress, double callbackId);
+    Q_INVOKABLE void verifyENSName(QString ensName, QString publicKey, QString rpcEndpoint, QString contractAddress, double callbackId);
     Q_INVOKABLE void chaosModeUpdate(bool on, double callbackId);
 
     Q_INVOKABLE void setAdjustResize();

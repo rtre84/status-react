@@ -471,14 +471,24 @@ void RCTStatus::updateMailservers(QString enodes, double callbackId) {
         }, enodes, callbackId);
 }
 
-void RCTStatus::getNodesFromContract(QString url, QString address, double callbackId) {
+void RCTStatus::getNodesFromContract(QString rpcEndpoint, QString contractAddress, double callbackId) {
     Q_D(RCTStatus);
     qCDebug(RCTSTATUS) << "::getNodesFromContract call - callbackId:" << callbackId;
-    QtConcurrent::run([&](QString url, QString address, double callbackId) {
-            const char* result = GetNodesFromContract(url.toUtf8().data(), address.toUtf8().data());
+    QtConcurrent::run([&](QString rpcEndpoint, QString contractAddress, double callbackId) {
+            const char* result = GetNodesFromContract(rpcEndpoint.toUtf8().data(), contractAddress.toUtf8().data());
             logStatusGoResult("::getNodesFromContract GetNodesFromContract", result);
             d->bridge->invokePromiseCallback(callbackId, QVariantList{result});
-        }, url, address, callbackId);
+        }, rpcEndpoint, contractAddress, callbackId);
+}
+
+void RCTStatus::verifyENSName(QString ensName, QString publicKey, QString rpcEndpoint, QString contractAddress, double callbackId) {
+    Q_D(RCTStatus);
+    qCDebug(RCTSTATUS) << "::verifyENSName call - callbackId:" << callbackId;
+    QtConcurrent::run([&](QString ensName, QString publicKey, QString rpcEndpoint, QString contractAddress, double callbackId) {
+            const char* result = VerifyENSName(ensName.toUtf8().data(), publicKey.toUtf8().data(), rpcEndpoint.toUtf8().data(), contractAddress.toUtf8().data());
+            logStatusGoResult("::verifyENSName VerifyENSName", result);
+            d->bridge->invokePromiseCallback(callbackId, QVariantList{result});
+        }, ensName, publicKey, rpcEndpoint, contractAddress, callbackId);
 }
 
 void RCTStatus::chaosModeUpdate(bool on, double callbackId) {
