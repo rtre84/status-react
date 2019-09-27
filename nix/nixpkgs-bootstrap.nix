@@ -4,6 +4,8 @@
     owner = "status-im";
     repo = "nixpkgs";
     rev = "da364619549c337e6e8d9d45ddd2767a3d5cf574";
+    # To get the sha256, execute: $ nix-prefetch-url --unpack https://github.com/status-im/nixpkgs/archive/$REV.tar.gz.
+    # The last line will be the hash.
     sha256 = "1farmlpxp2v89ffqac5rdhbjps3gw5lhlmsmp1bgza4ggzq7rzfa";
     name = "nixpkgs-source";
   })) { inherit config; } }:
