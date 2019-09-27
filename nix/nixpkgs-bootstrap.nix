@@ -4,7 +4,7 @@
     owner = "status-im";
     repo = "nixpkgs";
     rev = "da364619549c337e6e8d9d45ddd2767a3d5cf574";
-    sha256 = "0qn17ryd9vy8l9h3adb0lzhssn07akh91r5vkddxiakj1nabisks";
+    sha256 = "1farmlpxp2v89ffqac5rdhbjps3gw5lhlmsmp1bgza4ggzq7rzfa";
     name = "nixpkgs-source";
   })) { inherit config; } }:
 
