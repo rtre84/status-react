@@ -3,10 +3,10 @@
   pkgs ? (import ((import <nixpkgs> { }).fetchFromGitHub {
     owner = "status-im";
     repo = "nixpkgs";
-    rev = "da364619549c337e6e8d9d45ddd2767a3d5cf574";
+    rev = "c3018c2b9bbd744491efb8386f6112736f458001";
     # To get the sha256, execute: $ nix-prefetch-url --unpack https://github.com/status-im/nixpkgs/archive/$REV.tar.gz.
     # The last line will be the hash.
-    sha256 = "1farmlpxp2v89ffqac5rdhbjps3gw5lhlmsmp1bgza4ggzq7rzfa";
+    sha256 = "0l1ly8hfwaad1alk0cs8axwcgrrsf2kd3ayga5zax3wfy3qrqbd8";
     name = "nixpkgs-source";
   })) { inherit config; } }:
 
