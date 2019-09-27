@@ -16,10 +16,14 @@ let
   removeReferences = [ go ];
   removeExpr = refs: ''remove-references-to ${lib.concatMapStrings (ref: " -t ${ref}") refs}'';
 
+  sanitizeId = builtins.replaceStrings
+    [ "'" "/" "@" ]
+    [ "_" "_" "at" ];
+
   args = removeAttrs args' [ "buildMessage" ]; # Remove our arguments from args before passing them on to buildGoPackage
   buildStatusGo = buildGoPackage (args // {
     pname = repo;
-    version = "${version}-${strings.substring 0 7 rev}-${host}";
+    version = "${sanitizeId version}-${strings.substring 0 7 rev}-${host}";
 
     nativeBuildInputs = 
       nativeBuildInputs ++
