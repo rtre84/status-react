@@ -87,7 +87,17 @@ _fix-node-perms: ##@prepare Fix permissions so that directory can be cleaned
 
 clean: SHELL := /bin/sh
 clean: _fix-node-perms ##@prepare Remove all output folders
-	git clean -dxf -f
+	echo "Cleaning status-react repo ..."; \
+	git clean -dxf -f; \
+	echo "Cleaning Yarn/Metro caches in temp dirs ..."; \
+	for d in "$$TMPDIR" "/tmp"; do \
+	if [ -d "$$d" ]; then \
+	pushd $$TMPDIR; \
+	rm -rf ./*metro*; \
+	rm -rf ./*yarn*; \
+	popd; \
+	fi; \
+	done
 
 watchman-clean: export _NIX_ATTR := targets.watchman.shell
 watchman-clean: ##@prepare Delete repo directory from watchman 
