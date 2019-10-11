@@ -1,5 +1,5 @@
 pipeline {
-  agent { label 'macos' }
+  agent { label 'macos-xcode-11.1' }
 
   parameters {
     string(
