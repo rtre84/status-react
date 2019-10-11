@@ -1,6 +1,7 @@
 (ns status-im.ens.core
   (:require [clojure.string :as string]
             [re-frame.core :as re-frame]
+            [taoensso.timbre :as log]
             [status-im.multiaccounts.update.core :as multiaccounts.update]
             [status-im.ethereum.abi-spec :as abi-spec]
             [status-im.ethereum.contracts :as contracts]
@@ -10,6 +11,7 @@
             [status-im.ethereum.stateofus :as stateofus]
             [status-im.ui.screens.navigation :as navigation]
             [status-im.utils.fx :as fx]
+            [status-im.ethereum.json-rpc :as json-rpc]
             [status-im.utils.money :as money]
             [status-im.signing.core :as signing]
             [status-im.ethereum.eip55 :as eip55])
@@ -176,3 +178,19 @@
   (fx/merge cofx
             {:db (assoc-in db [:ens/registration :registering?] true)}
             (navigation/navigate-to-cofx :ens-register {})))
+
+(defn verify-names [names]
+  (json-rpc/call {:method "shhext_verifyENSNames"
+                  :params [names]
+                  :on-success #(re-frame/dispatch [:contacts/ens-names-verified %])
+                  :on-failure #(log/error "failed to resolve ens names" % names)}))
+
+(re-frame/reg-fx
+ ::verify-names
+ (fn [names]
+   (verify-names (distinct names))))
+
+(fx/defn verify-names-from-message [cofx {:keys [content]} signature]
+  (when (:name content)
+    {::verify-names [{:name (:name content)
+                      :publicKey (subs signature 2)}]}))

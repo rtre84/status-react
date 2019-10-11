@@ -16,14 +16,17 @@
 
 (defn displayed-name
   "Use preferred name, name or alias in that order"
-  [{:keys [name preferred-name alias public-key]}]
-  (let [name (or preferred-name
-                 name
-                 alias)]
-    (if (ens/is-valid-eth-name? name)
-      (let [username (stateofus/username name)]
-        (str "@" (or username name)))
-      (or name (gfycat/generate-gfy public-key)))))
+  [{:keys [name preferred-name alias public-key ens-verified]}]
+  (let [ens-name (or preferred-name
+                     name)]
+    ;; Preferred name is our own?
+    ;; otherwise we make sure is verified
+    (if (or preferred-name
+            (and ens-verified
+                 name))
+      (let [username (stateofus/username ens-name)]
+        (str "@" (or username ens-name)))
+      (or alias (gfycat/generate-gfy public-key)))))
 
 (defn displayed-photo
   "If a photo-path is set use it, otherwise fallback on identicon or generate"

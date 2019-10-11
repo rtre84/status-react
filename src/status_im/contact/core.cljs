@@ -161,3 +161,20 @@
                     (assoc :tribute-to-talk (or tribute-to-talk
                                                 {:disabled? true})))]
     {:db (assoc-in db [:contacts/contacts public-key] contact)}))
+
+(defn add-ens-names [contacts names]
+  (reduce-kv (fn [acc public-key-keyword {:keys [verified error]}]
+               (let [public-key (str "0x" (name public-key-keyword))
+                     contact    (contact.db/public-key->contact contacts public-key)]
+
+                 (if verified
+                   (assoc acc public-key (assoc contact :verified true))
+                   (assoc acc public-key contact))))
+             (or contacts {})
+             names))
+
+(fx/defn names-verified
+  {:events [:contacts/ens-names-verified]}
+  [{:keys [db]} names]
+  {:db (update db :contacts add-ens-names names)})
+
