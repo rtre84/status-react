@@ -50,7 +50,8 @@
             status-im.ui.screens.hardwallet.connect.subs
             status-im.ui.screens.hardwallet.settings.subs
             status-im.ui.screens.hardwallet.pin.subs
-            status-im.ui.screens.hardwallet.setup.subs))
+            status-im.ui.screens.hardwallet.setup.subs
+            [status-im.ens.core :as ens]))
 
 ;; TOP LEVEL ===========================================================================================================
 
@@ -78,7 +79,6 @@
 (reg-root-key-sub :dimensions/window :dimensions/window)
 (reg-root-key-sub :initial-props :initial-props)
 (reg-root-key-sub :fleets/custom-fleets :custom-fleets)
-(reg-root-key-sub :chain-sync-state :node/chain-sync-state)
 (reg-root-key-sub :desktop/desktop :desktop/desktop)
 (reg-root-key-sub :desktop :desktop)
 (reg-root-key-sub :animations :animations)
@@ -427,6 +427,13 @@
    public-key))
 
 (re-frame/reg-sub
+ :multiaccount/default-address
+ :<- [:multiaccount]
+ (fn [{:keys [accounts]}]
+   (ethereum/normalized-address
+    (:address (ethereum/get-default-account accounts)))))
+
+(re-frame/reg-sub
  :sign-in-enabled?
  :<- [:multiaccounts/login]
  (fn [{:keys [password]}]
@@ -444,11 +451,6 @@
  :<- [:multiaccount]
  (fn [acc]
    (get acc :settings)))
-
-(re-frame/reg-sub
- :latest-block-number
- (fn [{:node/keys [latest-block-number]} _]
-   (if latest-block-number latest-block-number 0)))
 
 (re-frame/reg-sub
  :settings/current-log-level
@@ -469,6 +471,13 @@
  :<- [:dapps-address]
  (fn [[acc address]]
    (some #(when (= (:address %) address) %) (:accounts acc))))
+
+(re-frame/reg-sub
+ :current-account
+ :<- [:multiaccount]
+ :<- [:get-screen-params :wallet-account]
+ (fn [[macc acc]]
+   (some #(when (= (:address %) (:address acc)) %) (:accounts macc))))
 
 ;;CHAT ==============================================================================================================
 
@@ -1851,40 +1860,58 @@
    (:show-name? multiaccount)))
 
 (re-frame/reg-sub
- :ens.registration/screen
+ :ens/search-screen
+ :<- [:ens/registration]
+ (fn [{:keys [custom-domain? username state]}]
+   {:state          state
+    :username       username
+    :custom-domain? custom-domain?}))
+
+(defn- ens-amount-label
+  [chain-id]
+  (str (ens/registration-cost chain-id)
+       (case chain-id
+         3 " STT"
+         1 " SNT"
+         "")))
+
+(re-frame/reg-sub
+ :ens/checkout-screen
  :<- [:ens/registration]
  :<- [:ens.stateofus/registrar]
- :<- [:multiaccount]
+ :<- [:multiaccount/default-address]
+ :<- [:multiaccount/public-key]
  :<- [:chain-id]
- (fn [[{:keys [custom-domain? username-candidate registering?] :as ens}
-       registrar {:keys [accounts public-key]} chain-id]]
-   (let [amount (case chain-id
-                  3 50
-                  1 10
-                  0)
-         amount-label (str amount (case chain-id
-                                    3 " STT"
-                                    1 " SNT"
-                                    ""))]
-     {:state          (get-in ens [:states username-candidate])
-      :registering?   registering?
-      :username       username-candidate
-      :custom-domain? (or custom-domain? false)
-      :contract       registrar
-      :address        (:address (ethereum/get-default-account accounts))
-      :public-key     public-key
-      :amount amount
-      :amount-label amount-label})))
+ (fn [[{:keys [custom-domain? username]}
+       registrar default-address public-key chain-id]]
+   {:address        default-address
+    :username       username
+    :public-key     public-key
+    :custom-domain? custom-domain?
+    :contract       registrar
+    :amount-label   (ens-amount-label chain-id)}))
+
+(re-frame/reg-sub
+ :ens/confirmation-screen
+ :<- [:ens/registration]
+ (fn [{:keys [username state] :as ens}]
+   {:state          state
+    :username       username}))
 
 (re-frame/reg-sub
  :ens.name/screen
  :<- [:get-screen-params :ens-name-details]
  :<- [:ens/names]
  (fn [[name ens]]
-   (let [{:keys [address public-key]} (get-in ens [:details name])]
-     {:name       name
-      :address    address
-      :public-key public-key})))
+   (let [{:keys [address public-key]} (get ens name)
+         pending? (nil? address)]
+     (cond-> {:name       name
+              :custom-domain? (not (string/ends-with? name ".stateofus.eth"))}
+       pending?
+       (assoc :pending? true)
+       (not pending?)
+       (assoc :address    address
+              :public-key public-key)))))
 
 (re-frame/reg-sub
  :ens.main/screen

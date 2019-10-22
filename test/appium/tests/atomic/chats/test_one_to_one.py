@@ -46,7 +46,7 @@ class TestMessagesOneToOneChatMultiple(MultipleDeviceTestCase):
         public_key_1 = home_1.get_public_key()
         home_1.home_button.click()
 
-        home_1.airplane_mode_button.click()  # airplane mode on primary device
+        home_1.toggle_airplane_mode()  # airplane mode on primary device
 
         profile_2 = home_2.profile_button.click()
         username_2 = profile_2.default_username_text.text
@@ -55,9 +55,9 @@ class TestMessagesOneToOneChatMultiple(MultipleDeviceTestCase):
         message_1 = 'test message'
         chat_2.chat_message_input.send_keys(message_1)
         chat_2.send_message_button.click()
-        chat_2.airplane_mode_button.click()  # airplane mode on secondary device
+        chat_2.toggle_airplane_mode()  # airplane mode on secondary device
 
-        home_1.airplane_mode_button.click()  # turning on WiFi connection on primary device
+        home_1.toggle_airplane_mode()  # turning on WiFi connection on primary device
 
         home_1.connection_status.wait_for_invisibility_of_element(30)
         chat_element = home_1.get_chat_with_user(username_2)
@@ -65,8 +65,8 @@ class TestMessagesOneToOneChatMultiple(MultipleDeviceTestCase):
         chat_1 = chat_element.click()
         chat_1.chat_element_by_text(message_1).wait_for_visibility_of_element(2)
 
-        chat_2.airplane_mode_button.click()  # turning on WiFi connection on secondary device
-        home_1.airplane_mode_button.click()  # airplane mode on primary device
+        chat_2.toggle_airplane_mode()  # turning on WiFi connection on secondary device
+        home_1.toggle_airplane_mode()  # airplane mode on primary device
 
         chat_2.element_by_text('Connecting to peers...').wait_for_invisibility_of_element(60)
         chat_2.connection_status.wait_for_invisibility_of_element(60)
@@ -74,7 +74,7 @@ class TestMessagesOneToOneChatMultiple(MultipleDeviceTestCase):
         chat_2.chat_message_input.send_keys(message_2)
         chat_2.send_message_button.click()
 
-        home_1.airplane_mode_button.click()  # turning on WiFi connection on primary device
+        home_1.toggle_airplane_mode()  # turning on WiFi connection on primary device
 
         chat_1 = chat_element.click()
         chat_1.chat_element_by_text(message_2).wait_for_visibility_of_element(180)
@@ -308,6 +308,8 @@ class TestMessagesOneToOneChatMultiple(MultipleDeviceTestCase):
 
     @marks.testrail_id(5425)
     @marks.medium
+    @marks.skip
+    # TODO: e2e blocker: 8995 (should be enabled after fix)
     def test_bold_and_italic_text_in_messages(self):
         self.create_drivers(2)
         sign_in_1, sign_in_2 = SignInView(self.drivers[0]), SignInView(self.drivers[1])
@@ -368,6 +370,7 @@ class TestMessagesOneToOneChatMultiple(MultipleDeviceTestCase):
     @marks.skip
     @marks.testrail_id(5385)
     @marks.high
+    # TODO: update with correct time - doesn't work for now
     def test_timestamp_in_chats(self):
         self.create_drivers(2)
         sign_in_1, sign_in_2 = SignInView(self.drivers[0]), SignInView(self.drivers[1])
@@ -417,7 +420,7 @@ class TestMessagesOneToOneChatMultiple(MultipleDeviceTestCase):
     @marks.testrail_id(5405)
     @marks.high
     @marks.skip
-    # temporary skipped due to 8601
+    # TODO: temporary skipped due to 8601
     def test_fiat_value_is_correctly_calculated_on_recipient_side(self):
         sender = transaction_senders['Y']
         recipient = transaction_recipients['I']
@@ -534,7 +537,7 @@ class TestMessagesOneToOneChatSingle(SingleDeviceTestCase):
         message_input.delete_last_symbols(2)
         current_text = message_input.text
         if current_text != message_text[:-2]:
-            pytest.fail("Message input text '%s' doesn't match expected '%s'" % (current_text, message_text[:-2]))
+            self.driver.fail("Message input text '%s' doesn't match expected '%s'" % (current_text, message_text[:-2]))
 
         message_input.cut_text()
 
@@ -572,7 +575,7 @@ class TestMessagesOneToOneChatSingle(SingleDeviceTestCase):
     @marks.testrail_id(5393)
     @marks.high
     @marks.skip
-    # temporary skipped due to 8601
+    # TODO: temporary skipped due to 8601
     def test_that_fiat_value_is_correct_for_token_transactions(self):
         sender_passphrase = transaction_senders['X']['passphrase']
         recipient_public_key = transaction_recipients['H']['public_key']

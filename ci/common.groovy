@@ -26,7 +26,7 @@ def updateBucketJSON(urls, fileName) {
   def contentJson = new JsonBuilder(content).toPrettyString()
   println "${fileName}:\n${contentJson}"
   new File(filePath).write(contentJson)
-  return utils.uploadArtifact(filePath)
+  return uploadArtifact(filePath)
 }
 
 def prep(type = 'nightly') {
@@ -59,12 +59,44 @@ def prep(type = 'nightly') {
 
   if (env.TARGET_OS == 'macos' || env.TARGET_OS == 'linux' || env.TARGET_OS == 'windows') {
     /* node deps, pods, and status-go download */
-    utils.nix.shell('scripts/prepare-for-desktop-platform.sh', pure: false)
+    nix.shell('scripts/prepare-for-desktop-platform.sh', pure: false)
     sh('scripts/copy-translations.sh')
   } else if (env.TARGET_OS != 'android') {
     // run script in the nix shell so that node_modules gets instantiated before attempting the copies
-    utils.nix.shell('scripts/copy-translations.sh chmod')
+    nix.shell('scripts/copy-translations.sh chmod')
   }
+}
+
+def uploadArtifact(path) {
+  /* defaults for upload */
+  def domain = 'ams3.digitaloceanspaces.com'
+  def bucket = 'status-im'
+  /* There's so many PR builds we need a separate bucket */
+  if (utils.getBuildType() == 'pr') {
+    bucket = 'status-im-prs'
+  }
+  /* WARNING: s3cmd can't guess APK MIME content-type */
+  def customOpts = ''
+  if (path.endsWith('apk')) {
+    customOpts += "--mime-type='application/vnd.android.package-archive'"
+  }
+  /* We also need credentials for the upload */
+  withCredentials([usernamePassword(
+    credentialsId: 'digital-ocean-access-keys',
+    usernameVariable: 'DO_ACCESS_KEY',
+    passwordVariable: 'DO_SECRET_KEY'
+  )]) {
+    sh("""
+      s3cmd ${customOpts} \\
+        --acl-public \\
+        --host="${domain}" \\
+        --host-bucket="%(bucket)s.${domain}" \\
+        --access_key=${DO_ACCESS_KEY} \\
+        --secret_key=${DO_SECRET_KEY} \\
+        put ${path} s3://${bucket}/
+    """)
+  }
+  return "https://${bucket}.${domain}/${utils.getFilename(path)}"
 }
 
 return this

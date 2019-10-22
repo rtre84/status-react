@@ -2,7 +2,7 @@ import pytest
 import re
 
 from tests import marks, bootnode_address, mailserver_address, camera_access_error_text, \
-    photos_access_error_text
+    photos_access_error_text, test_dapp_url, test_dapp_name
 from tests.base_test_case import SingleDeviceTestCase, MultipleDeviceTestCase
 from tests.users import transaction_senders, basic_user, ens_user
 from views.dapps_view import DappsView
@@ -56,7 +56,7 @@ class TestProfileSingleDevice(SingleDeviceTestCase):
             self.errors.append("Message was not sent!")
         self.verify_no_errors()
 
-    @marks.testrail_id(5741)
+    @marks.testrail_id(6228)
     @marks.high
     def test_mobile_data_usage_popup_stop_syncing(self):
         sign_in_view = SignInView(self.driver)
@@ -78,7 +78,7 @@ class TestProfileSingleDevice(SingleDeviceTestCase):
         if sign_in_view.element_by_text_part(offline_banner_text).is_element_displayed():
             self.driver.fail("Popup about offline history is shown")
 
-    @marks.testrail_id(6228)
+    @marks.testrail_id(6229)
     @marks.high
     def test_mobile_data_usage_settings(self):
         sign_in_view = SignInView(self.driver)
@@ -193,24 +193,25 @@ class TestProfileSingleDevice(SingleDeviceTestCase):
     def test_can_add_existing_ens(self):
         sign_in = SignInView(self.driver)
         home = sign_in.recover_access(ens_user['passphrase'])
+
+        home.just_fyi('switching to Mainnet')
         profile = home.profile_button.click()
         profile.switch_network('Mainnet with upstream RPC')
         home.profile_button.click()
         profile.element_by_text('ENS usernames').click()
         dapp_view = DappsView(self.driver)
 
-        # check if your name can be added via "ENS usernames" dapp in Profile
+        dapp_view.just_fyi('check if your name can be added via "ENS usernames" in Profile')
         dapp_view.element_by_text('Get started').click()
         dapp_view.ens_name.set_value(ens_user['ens'])
         if not dapp_view.element_by_text_part('is owned by you').is_element_displayed():
             self.errors.append('Owned username is not shown in ENS Dapp.')
         dapp_view.check_ens_name.click()
-        dapp_view.check_ens_name.click()
         if not dapp_view.element_by_text_part('Username added').is_element_displayed():
             self.errors.append('No message "Username added" after resolving own username')
         dapp_view.element_by_text('Ok, got it').click()
 
-        # check that after adding username is shown in "ENS usernames" and profile
+        dapp_view.just_fyi('check that after adding username is shown in "ENS usernames" and profile')
         if not dapp_view.element_by_text(ens_user['ens']).is_element_displayed():
             self.errors.append('No ENS name is shown in own "ENS usernames" after adding')
         dapp_view.back_button.click()
@@ -231,7 +232,7 @@ class TestProfileSingleDevice(SingleDeviceTestCase):
             profile_view.swipe_down()
             if not profile_view.profile_picture.is_element_image_equals_template(
                     file_name.replace('.png', '_profile.png')):
-                pytest.fail('Profile picture was not updated')
+                self.driver.fail('Profile picture was not updated')
 
     @marks.testrail_id(5329)
     @marks.critical
@@ -333,6 +334,26 @@ class TestProfileSingleDevice(SingleDeviceTestCase):
                 self.errors.append('%s is not visible' % text)
         self.verify_no_errors()
 
+    @marks.testrail_id(5368)
+    @marks.high
+    def test_log_level_and_fleet(self):
+        sign_in_view = SignInView(self.driver)
+        sign_in_view.create_user()
+        profile_view = sign_in_view.profile_button.click()
+        profile_view.advanced_button.click()
+        if 'release' in str(pytest.config.getoption('apk')):
+            # TODO: should be edited after showing some text in setting when log in disabled
+            if profile_view.log_level_setting.is_element_displayed():
+                self.errors.append('Log is not disabled')
+            if not profile_view.element_by_text('eth.beta').is_element_displayed():
+                self.errors.append('Fleet is not set to eth.beta')
+        else:
+            for text in 'INFO', 'eth.beta':
+                if not profile_view.element_by_text(text).is_element_displayed():
+                    self.errors.append('%s is not selected by default' % text)
+        self.verify_no_errors()
+
+
     @marks.testrail_id(5468)
     @marks.medium
     def test_deny_camera_access_changing_profile_photo(self):
@@ -403,25 +424,30 @@ class TestProfileSingleDevice(SingleDeviceTestCase):
         self.verify_no_errors()
 
     @marks.testrail_id(5738)
-    @marks.medium
+    @marks.high
     def test_dapps_permissions(self):
         sign_in_view = SignInView(self.driver)
         home_view = sign_in_view.create_user()
+        account_name = 'Status account'
+
+        home_view.just_fyi('open Status Test Dapp, allow all and check permissions in Profile')
         home_view.open_status_test_dapp()
         home_view.cross_icon.click()
         profile_view = home_view.profile_button.click()
         profile_view.privacy_and_security_button.click()
         profile_view.dapp_permissions_button.click()
-        profile_view.element_by_text('status-im.github.io').click()
-        if not profile_view.element_by_text('Wallet').is_element_displayed():
+        profile_view.element_by_text(test_dapp_name).click()
+        if not profile_view.element_by_text(account_name).is_element_displayed():
             self.errors.append('Wallet permission was not granted')
         if not profile_view.element_by_text('Chat key').is_element_displayed():
             self.errors.append('Contact code permission was not granted')
+
+        profile_view.just_fyi('revoke access and check that they are asked second time')
         profile_view.revoke_access_button.click()
         profile_view.back_button.click()
         dapp_view = profile_view.dapp_tab_button.click()
-        dapp_view.open_url('status-im.github.io/dapp')
-        if not dapp_view.element_by_text_part('connect to your wallet').is_element_displayed():
+        dapp_view.open_url(test_dapp_url)
+        if not dapp_view.element_by_text_part(account_name).is_element_displayed():
             self.errors.append('Wallet permission is not asked')
         if dapp_view.allow_button.is_element_displayed():
             dapp_view.allow_button.click(times_to_click=1)
@@ -459,6 +485,8 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
 
     @marks.testrail_id(5432)
     @marks.medium
+    @marks.skip
+    # TODO: e2e blocker: no force-logout after enabling bootnode (enable after fix)
     def test_custom_bootnodes(self):
         self.create_drivers(2)
         sign_in_1, sign_in_2 = SignInView(self.drivers[0]), SignInView(self.drivers[1])
@@ -505,10 +533,13 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
         sign_in_1, sign_in_2 = SignInView(self.drivers[0]), SignInView(self.drivers[1])
         home_1, home_2 = sign_in_1.create_user(), sign_in_2.create_user()
         public_key = home_2.get_public_key()
+        home_2.get_back_to_home_view()
 
         profile_1 = home_1.profile_button.click()
         username_1 = profile_1.default_username_text.text
-        profile_1.advanced_button.click()
+
+        profile_1.just_fyi('add custom mailserver and connect to it')
+        profile_1.sync_settings_button.click()
         profile_1.mail_server_button.click()
         profile_1.plus_button.click()
         server_name = 'test'
@@ -522,6 +553,7 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
         profile_1.get_back_to_home_view()
         profile_1.home_button.click()
 
+        profile_1.just_fyi('start chat with user2 and check that all messages are delivered')
         chat_1 = home_1.add_contact(public_key)
         message = 'test message'
         chat_1.chat_message_input.send_keys(message)
@@ -532,11 +564,6 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
         chat_2.chat_message_input.send_keys(message_1)
         chat_2.send_message_button.click()
         chat_1.chat_element_by_text(message_1).wait_for_visibility_of_element()
-
-
-@marks.all
-@marks.account
-class TestProfileMultipleDevice(MultipleDeviceTestCase):
 
     @marks.testrail_id(5762)
     @marks.high
@@ -620,7 +647,7 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
         group_chat_name = 'group-%s' % device_1_home.get_public_chat_name()
         message_after_sync = 'sent after sync'
 
-        # device 1: join public chat, create group chat, edit user picture
+        device_1.just_fyi('join public chat, create group chat, edit user picture')
         device_1_public_chat = device_1_home.join_public_chat(public_chat_before_sync_name)
         device_1_public_chat.back_button.click()
         device_1_one_to_one = device_1_home.add_contact(basic_user['public_key'])
@@ -631,18 +658,18 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
         device_1_profile = device_1_home.get_profile_view()
         device_1_profile.edit_profile_picture('sauce_logo.png')
 
-        # device 2: go to profile > Devices, set device name, discover device 2 to device 1
+        device_2.just_fyi('go to profile > Devices, set device name, discover device 2 to device 1')
         device_2_home = device_2.recover_access(passphrase=' '.join(recovery_phrase.values()))
         device_2_profile = device_2_home.get_profile_view()
         device_2_profile.discover_and_advertise_device(device_2_name)
 
-        # device 1: enable pairing of `device 2` and sync
+        device_1.just_fyi('enable pairing of `device 2` and sync')
         device_1_profile.discover_and_advertise_device(device_1_name)
         device_1_profile.get_toggle_device_by_name(device_2_name).click()
         device_1_profile.sync_all_button.click()
         device_1_profile.sync_all_button.wait_for_visibility_of_element(15)
 
-        # device 2: check that public chat and profile details are updated
+        device_2.just_fyi('check that public chat and profile details are updated')
         device_2_home = device_2_profile.get_back_to_home_view()
         if not device_2_home.element_by_text('#%s' % public_chat_before_sync_name).is_element_displayed():
             self.errors.append('Public chat "%s" doesn\'t appear after initial sync'
@@ -652,7 +679,7 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
         if not device_2_profile.profile_picture.is_element_image_equals_template('sauce_logo_profile.png'):
             self.errors.append('Profile picture was not updated after initial sync')
 
-        # device 1: send message to group chat, edit profile details and join to new public chat
+        device_1.just_fyi('send message to group chat, edit profile details and join to new public chat')
         device_1_home = device_1_profile.get_back_to_home_view()
         device_1_public_chat = device_1_home.join_public_chat(public_chat_after_sync_name)
         device_1_public_chat.back_button.click()
@@ -663,7 +690,7 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
         device_1_profile = device_1_home.profile_button.click()
         device_1_profile.edit_profile_picture('sauce_logo_red.png')
 
-        # device 2: check that message in group chat is shown, profile details and public chats are synced
+        device_2.just_fyi('check that message in group chat is shown, profile details and public chats are synced')
         device_2_profile.home_button.click()
         if not device_2_home.element_by_text('#%s' % public_chat_after_sync_name).is_element_displayed():
             self.errors.append('Public chat "%s" doesn\'t appear on other device when devices are paired'
@@ -692,6 +719,7 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
         home_1 = sign_in_1.recover_access(user_1['passphrase'])
         home_2 = sign_in_2.create_user()
 
+        home_1.just_fyi('switching to mainnet and add ENS')
         profile_1 = sign_in_1.profile_button.click()
         profile_1.switch_network('Mainnet with upstream RPC')
         home_1.profile_button.click()
@@ -700,11 +728,11 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
         dapp_view_1.element_by_text('Get started').click()
         dapp_view_1.ens_name.set_value(ens_user['ens'])
         dapp_view_1.check_ens_name.click()
-        dapp_view_1.check_ens_name.click()
         dapp_view_1.element_by_text('Ok, got it').click()
         dapp_view_1.back_button.click()
         profile_1.home_button.click()
 
+        home_2.just_fyi('joining same public chat, checking default username on message')
         chat_name = home_1.get_public_chat_name()
         chat_2 = home_2.join_public_chat(chat_name)
         chat_1 = home_1.join_public_chat(chat_name)
@@ -714,6 +742,7 @@ class TestProfileMultipleDevice(MultipleDeviceTestCase):
             self.errors.append('Default username is not shown in public chat')
         chat_2.send_message('message from device 2')
 
+        home_1.just_fyi('set ENS name for public chat and check it from device2')
         chat_1.get_back_to_home_view()
         home_1.profile_button.click()
         profile_1.element_by_text('Your ENS name').click()

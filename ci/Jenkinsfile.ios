@@ -1,5 +1,5 @@
 pipeline {
-  agent { label 'macos' }
+  agent { label 'macos-xcode-11.1' }
 
   parameters {
     string(
@@ -27,6 +27,8 @@ pipeline {
     LANGUAGE = "en_US.UTF-8"
     TARGET_OS = 'ios'
     NIX_CONF_DIR = "${env.WORKSPACE}/nix"
+    /* See nix/README.md */
+    NIX_IGNORE_SYMLINK_STORE = 1
     FASTLANE_DISABLE_COLORS = 1
     BUNDLE_PATH = "${HOME}/.bundle"
     /* We use EXECUTOR_NUMBER to avoid multiple instances clashing */
@@ -48,7 +50,7 @@ pipeline {
         }
       }
     }
-    stage('Parallel') {
+    stage('Parallel Assemble') {
       parallel {
         stage('Checks') { stages {
           stage('Lint') {
@@ -76,20 +78,24 @@ pipeline {
         } }
       }
     }
-    stage('Archive') {
-      steps {
-        archiveArtifacts api
-      }
-    }
-    stage('Upload') {
-      steps {
-        script {
-          env.PKG_URL = cmn.utils.uploadArtifact(api)
-          /* e2e builds get tested in SauceLabs */
-          if (btype == 'e2e') {
-            env.SAUCE_URL = ios.uploadToSauceLabs()
-          } else {
-            env.DIAWI_URL = ios.uploadToDiawi()
+    stage('Parallel Upload') {
+      parallel {
+        stage('Archive') {
+          steps {
+            archiveArtifacts api
+          }
+        }
+        stage('Upload') {
+          steps {
+            script {
+              env.PKG_URL = cmn.uploadArtifact(api)
+              /* e2e builds get tested in SauceLabs */
+              if (btype == 'e2e') {
+                env.SAUCE_URL = ios.uploadToSauceLabs()
+              } else {
+                env.DIAWI_URL = ios.uploadToDiawi()
+              }
+            }
           }
         }
       }
