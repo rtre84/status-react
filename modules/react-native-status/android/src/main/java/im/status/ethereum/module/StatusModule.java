@@ -10,7 +10,9 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.preference.PreferenceManager;
+
 import androidx.core.content.FileProvider;
+
 import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
@@ -24,6 +26,8 @@ import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
@@ -32,6 +36,8 @@ import statusgo.Statusgo;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.json.JSONArray;
+
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -51,16 +57,19 @@ import java.util.zip.ZipOutputStream;
 
 import javax.annotation.Nullable;
 
+import android.app.Service;
+
 class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventListener, SignalHandler {
 
     private static final String TAG = "StatusModule";
     private static final String logsZipFileName = "Status-debug-logs.zip";
     private static final String gethLogFileName = "geth.log";
     private static final String statusLogFileName = "Status.log";
-
     private static StatusModule module;
     private ReactApplicationContext reactContext;
     private boolean rootedDevice;
+    private NewMessageSignalHandler newMessageSignalHandler;
+    private boolean background;
 
     StatusModule(ReactApplicationContext reactContext, boolean rootedDevice) {
         super(reactContext);
@@ -77,61 +86,91 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
     @Override
     public void onHostResume() {  // Activity `onResume`
         module = this;
+        this.background = false;
         Statusgo.setMobileSignalHandler(this);
     }
 
     @Override
     public void onHostPause() {
-
+        this.background = true;
     }
 
     @Override
     public void onHostDestroy() {
+        Log.d(TAG, "******************* ON HOST DESTROY *************************");
+    }
 
+    @ReactMethod
+    public void enableNotifications() {
+        this.newMessageSignalHandler = new NewMessageSignalHandler(reactContext);
+    }
+
+    @ReactMethod
+    public void disableNotifications() {
+        if (newMessageSignalHandler != null) {
+            newMessageSignalHandler.stop();
+            newMessageSignalHandler = null;
+        }
     }
 
     private boolean checkAvailability() {
-      // We wait at least 10s for getCurrentActivity to return a value,
-      // otherwise we give up
-      for (int attempts = 0; attempts < 100; attempts++) {
-        if (getCurrentActivity() != null) {
-          return true;
+        // We wait at least 10s for getCurrentActivity to return a value,
+        // otherwise we give up
+        for (int attempts = 0; attempts < 100; attempts++) {
+            if (getCurrentActivity() != null) {
+                return true;
+            }
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ex) {
+                if (getCurrentActivity() != null) {
+                    return true;
+                }
+                Log.d(TAG, "Activity doesn't exist");
+                return false;
+            }
         }
-        try {
-          Thread.sleep(100);
-        } catch (InterruptedException ex) {
-          if (getCurrentActivity() != null) {
-            return true;
-          }
-          Log.d(TAG, "Activity doesn't exist");
-          return false;
-        }
-      }
 
-      Log.d(TAG, "Activity doesn't exist");
-      return false;
+        Log.d(TAG, "Activity doesn't exist");
+        return false;
 
     }
 
     public String getNoBackupDirectory() {
-      return this.getReactApplicationContext().getNoBackupFilesDir().getAbsolutePath();
+        return this.getReactApplicationContext().getNoBackupFilesDir().getAbsolutePath();
     }
 
-    public void handleSignal(String jsonEvent) {
-        Log.d(TAG, "Signal event: " + jsonEvent);
-        WritableMap params = Arguments.createMap();
-        params.putString("jsonEvent", jsonEvent);
-        this.getReactApplicationContext().getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("gethEvent", params);
+    public void handleSignal(final String jsonEventString) {
+        try {
+            final JSONObject jsonEvent = new JSONObject(jsonEventString);
+            String eventType = jsonEvent.getString("type");
+            Log.d(TAG, "Signal event: " + jsonEventString);
+            // NOTE: the newMessageSignalHandler is only instanciated if the user
+            // enabled notifications in the app
+            if (this.background && newMessageSignalHandler != null) {
+                if (eventType.equals("messages.new")) {
+                    newMessageSignalHandler.handleNewMessageSignal(jsonEvent);
+                }
+            }
+            WritableMap params = Arguments.createMap();
+            params.putString("jsonEvent", jsonEventString);
+            this.getReactApplicationContext().getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("gethEvent", params);
+        } catch (JSONException e) {
+            Log.e(TAG, "JSON conversion failed: " + e.getMessage());
+        }
     }
 
     private File getLogsFile() {
-        final File pubDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        final Context context = this.getReactApplicationContext();
+        // Environment.getExternalStoragePublicDirectory doesn't work as expected on Android Q
+        // https://developer.android.com/reference/android/os/Environment#getExternalStoragePublicDirectory(java.lang.String)
+        final File pubDirectory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
         final File logFile = new File(pubDirectory, gethLogFileName);
 
         return logFile;
     }
 
-    private String prepareLogsFile(final Context context) {
+    private File prepareLogsFile(final Context context) {
         final File logFile = getLogsFile();
 
         try {
@@ -151,7 +190,7 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
             String gethLogFilePath = logFile.getAbsolutePath();
             Log.d(TAG, gethLogFilePath);
 
-            return gethLogFilePath;
+            return logFile;
         } catch (Exception e) {
             Log.d(TAG, "Can't create geth.log file! " + e.getMessage());
         }
@@ -159,17 +198,24 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
         return null;
     }
 
-    private String updateConfig(final String jsonConfigString, final String absRootDirPath, final String absKeystoreDirPath) throws JSONException {
+    private String updateConfig(final String jsonConfigString, final String absRootDirPath, final String keystoreDirPath) throws JSONException {
         final JSONObject jsonConfig = new JSONObject(jsonConfigString);
         // retrieve parameters from app config, that will be applied onto the Go-side config later on
-        final String absDataDirPath = pathCombine(absRootDirPath, jsonConfig.getString("DataDir"));
+        final String dataDirPath = jsonConfig.getString("DataDir");
         final Boolean logEnabled = jsonConfig.getBoolean("LogEnabled");
         final Context context = this.getReactApplicationContext();
-        final String gethLogFilePath = logEnabled ? prepareLogsFile(context) : null;
+        final File gethLogFile = logEnabled ? prepareLogsFile(context) : null;
+        String gethLogDirPath = null;
+        if (gethLogFile != null) {
+            gethLogDirPath = gethLogFile.getParent();
+        }
 
-        jsonConfig.put("DataDir", absDataDirPath);
-        jsonConfig.put("KeyStoreDir", absKeystoreDirPath);
-        jsonConfig.put("LogFile", gethLogFilePath);
+        Log.d(TAG, "log dir: " + gethLogDirPath + " log name: " + gethLogFileName);
+
+        jsonConfig.put("DataDir", dataDirPath);
+        jsonConfig.put("KeyStoreDir", keystoreDirPath);
+        jsonConfig.put("LogDir", gethLogDirPath);
+        jsonConfig.put("LogFile", gethLogFileName);
 
         return jsonConfig.toString();
     }
@@ -200,7 +246,7 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
         return file.getAbsolutePath();
     }
 
-    private String prepareDirAndUpdateConfig(final String jsonConfigString) {
+    private String prepareDirAndUpdateConfig(final String jsonConfigString, final String keyUID) {
 
         Activity currentActivity = getCurrentActivity();
 
@@ -257,7 +303,8 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
         }
 
         try {
-            final String updatedJsonConfigString = this.updateConfig(jsonConfigString, absRootDirPath, newKeystoreDir);
+            final String multiaccountKeystoreDir = pathCombine("/keystore", keyUID);
+            final String updatedJsonConfigString = this.updateConfig(jsonConfigString, absRootDirPath, multiaccountKeystoreDir);
 
             prettyPrintConfig(updatedJsonConfigString);
 
@@ -271,48 +318,59 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
     }
 
     @ReactMethod
-    public void prepareDirAndUpdateConfig(final String config, final Callback callback) {
+    public void prepareDirAndUpdateConfig(final String keyUID, final String config, final Callback callback) {
         Log.d(TAG, "prepareDirAndUpdateConfig");
-        String finalConfig = prepareDirAndUpdateConfig(config);
+        String finalConfig = prepareDirAndUpdateConfig(config, keyUID);
         callback.invoke(finalConfig);
     }
 
     @ReactMethod
-    public void saveAccountAndLogin(final String accountData, final String password , final String config, final String subAccountsData) {
-        Log.d(TAG, "saveAccountAndLogin");
-        String finalConfig = prepareDirAndUpdateConfig(config);
-        String result = Statusgo.saveAccountAndLogin(accountData, password, finalConfig, subAccountsData);
-        if (result.startsWith("{\"error\":\"\"")) {
-            Log.d(TAG, "StartNode result: " + result);
-            Log.d(TAG, "Geth node started");
-        }
-        else {
-            Log.e(TAG, "StartNode failed: " + result);
+    public void saveAccountAndLogin(final String multiaccountData, final String password, final String settings, final String config, final String accountsData) {
+        try {
+            Log.d(TAG, "saveAccountAndLogin");
+            String finalConfig = prepareDirAndUpdateConfig(config, this.getKeyUID(multiaccountData));
+            String result = Statusgo.saveAccountAndLogin(multiaccountData, password, settings, finalConfig, accountsData);
+            if (result.startsWith("{\"error\":\"\"")) {
+                Log.d(TAG, "saveAccountAndLogin result: " + result);
+                Log.d(TAG, "Geth node started");
+            } else {
+                Log.e(TAG, "saveAccountAndLogin failed: " + result);
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "JSON conversion failed: " + e.getMessage());
         }
     }
 
     @ReactMethod
-    public void saveAccountAndLoginWithKeycard(final String accountData, final String password , final String config, final String chatKey) {
-        Log.d(TAG, "saveAccountAndLoginWithKeycard");
-        String finalConfig = prepareDirAndUpdateConfig(config);
-        String result = Statusgo.saveAccountAndLoginWithKeycard(accountData, password, finalConfig, chatKey);
-        if (result.startsWith("{\"error\":\"\"")) {
-            Log.d(TAG, "StartNode result: " + result);
-            Log.d(TAG, "Geth node started");
+    public void saveAccountAndLoginWithKeycard(final String multiaccountData, final String password, final String settings, final String config, final String accountsData, final String chatKey) {
+        try {
+            Log.d(TAG, "saveAccountAndLoginWithKeycard");
+            String finalConfig = prepareDirAndUpdateConfig(config, this.getKeyUID(multiaccountData));
+            String result = Statusgo.saveAccountAndLoginWithKeycard(multiaccountData, password, settings, finalConfig, accountsData, chatKey);
+            if (result.startsWith("{\"error\":\"\"")) {
+                Log.d(TAG, "saveAccountAndLoginWithKeycard result: " + result);
+                Log.d(TAG, "Geth node started");
+            } else {
+                Log.e(TAG, "saveAccountAndLoginWithKeycard failed: " + result);
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "JSON conversion failed: " + e.getMessage());
         }
-        else {
-            Log.e(TAG, "StartNode failed: " + result);
-        }
+    }
+
+    private String getKeyUID(final String json) throws JSONException {
+        final JSONObject jsonObj = new JSONObject(json);
+        return jsonObj.getString("key-uid");
     }
 
     @ReactMethod
     public void login(final String accountData, final String password) {
         Log.d(TAG, "login");
+        this.migrateKeyStoreDir(accountData, password);
         String result = Statusgo.login(accountData, password);
         if (result.startsWith("{\"error\":\"\"")) {
             Log.d(TAG, "Login result: " + result);
-        }
-        else {
+        } else {
             Log.e(TAG, "Login failed: " + result);
         }
     }
@@ -320,11 +378,11 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
     @ReactMethod
     public void logout() {
         Log.d(TAG, "logout");
+        disableNotifications();
         String result = Statusgo.logout();
         if (result.startsWith("{\"error\":\"\"")) {
             Log.d(TAG, "Logout result: " + result);
-        }
-        else {
+        } else {
             Log.e(TAG, "Logout failed: " + result);
         }
     }
@@ -373,12 +431,10 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
     }
 
     @ReactMethod
-    private void initKeystore() {
+    private void initKeystore(final String keyUID, final Callback callback) {
         Log.d(TAG, "initKeystore");
 
         Activity currentActivity = getCurrentActivity();
-
-        final String keydir = pathCombine(this.getNoBackupDirectory(), "/keystore");
 
         if (!checkAvailability()) {
             Log.e(TAG, "[initKeystore] Activity doesn't exist, cannot init keystore");
@@ -386,12 +442,16 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
             return;
         }
 
+        final String commonKeydir = pathCombine(this.getNoBackupDirectory(), "/keystore");
+        final String keydir = pathCombine(commonKeydir, keyUID);
+
         Runnable r = new Runnable() {
-                @Override
-                public void run() {
-                    Statusgo.initKeystore(keydir);
-                }
-            };
+            @Override
+            public void run() {
+                Statusgo.initKeystore(keydir);
+                callback.invoke(true);
+            }
+        };
 
         StatusThreadPoolExecutor.getInstance().execute(r);
     }
@@ -409,12 +469,12 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
         }
 
         Runnable r = new Runnable() {
-                @Override
-                public void run() {
-                    String result =Statusgo.openAccounts(rootDir);
-                    callback.invoke(result);
-                }
-            };
+            @Override
+            public void run() {
+                String result = Statusgo.openAccounts(rootDir);
+                callback.invoke(result);
+            }
+        };
 
         StatusThreadPoolExecutor.getInstance().execute(r);
     }
@@ -444,47 +504,45 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
         StatusThreadPoolExecutor.getInstance().execute(r);
     }
 
-    @ReactMethod
-    public void loginWithKeycard(final String accountData, final String password, final String chatKey) {
-        Log.d(TAG, "loginWithKeycard");
-        String result = Statusgo.loginWithKeycard(accountData, password, chatKey);
-        if (result.startsWith("{\"error\":\"\"")) {
-            Log.d(TAG, "LoginWithKeycard result: " + result);
-        }
-        else {
-            Log.e(TAG, "LoginWithKeycard failed: " + result);
+    public void migrateKeyStoreDir(final String accountData, final String password) {
+        try {
+            final String commonKeydir = pathCombine(this.getNoBackupDirectory(), "/keystore");
+            final String keydir = pathCombine(commonKeydir, getKeyUID(accountData));
+            Log.d(TAG, "before migrateKeyStoreDir " + keydir);
+
+            File keydirFile = new File(keydir);
+            if(!keydirFile.exists() || keydirFile.list().length == 0) {
+                Log.d(TAG, "migrateKeyStoreDir");
+                Statusgo.migrateKeyStoreDir(accountData, password, commonKeydir, keydir);
+                Statusgo.initKeystore(keydir);
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "JSON conversion failed: " + e.getMessage());
         }
     }
 
     @ReactMethod
-    public void sendDataNotification(final String dataPayloadJSON, final String tokensJSON, final Callback callback) {
-        Log.d(TAG, "sendDataNotification");
-        if (!checkAvailability()) {
-            callback.invoke(false);
-            return;
+    public void loginWithKeycard(final String accountData, final String password, final String chatKey) {
+        Log.d(TAG, "loginWithKeycard");
+        this.migrateKeyStoreDir(accountData, password);
+        String result = Statusgo.loginWithKeycard(accountData, password, chatKey);
+        if (result.startsWith("{\"error\":\"\"")) {
+            Log.d(TAG, "LoginWithKeycard result: " + result);
+        } else {
+            Log.e(TAG, "LoginWithKeycard failed: " + result);
         }
-
-        Runnable r = new Runnable() {
-                @Override
-                public void run() {
-                    String res = Statusgo.sendDataNotification(dataPayloadJSON, tokensJSON);
-                    callback.invoke(res);
-                }
-            };
-
-        StatusThreadPoolExecutor.getInstance().execute(r);
     }
 
     private Boolean zip(File[] _files, File zipFile, Stack<String> errorList) {
         final int BUFFER = 0x8000;
 
-		try {
-			BufferedInputStream origin = null;
-			FileOutputStream dest = new FileOutputStream(zipFile);
-			ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(dest));
-			byte data[] = new byte[BUFFER];
+        try {
+            BufferedInputStream origin = null;
+            FileOutputStream dest = new FileOutputStream(zipFile);
+            ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(dest));
+            byte data[] = new byte[BUFFER];
 
-			for (int i = 0; i < _files.length; i++) {
+            for (int i = 0; i < _files.length; i++) {
                 final File file = _files[i];
                 if (file == null || !file.exists()) {
                     continue;
@@ -507,16 +565,16 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
                     Log.e(TAG, e.getMessage());
                     errorList.push(e.getMessage());
                 }
-			}
+            }
 
             out.close();
 
             return true;
-		} catch (Exception e) {
+        } catch (Exception e) {
             Log.e(TAG, e.getMessage());
             e.printStackTrace();
             return false;
-		}
+        }
     }
 
     private void dumpAdbLogsTo(final FileOutputStream statusLogStream) throws IOException {
@@ -537,13 +595,13 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
         final Activity activity = getCurrentActivity();
 
         new AlertDialog.Builder(activity)
-                       .setTitle("Error")
-                       .setMessage(message)
-                       .setNegativeButton("Exit", new DialogInterface.OnClickListener() {
-                           public void onClick(final DialogInterface dialog, final int id) {
-                               dialog.dismiss();
-                           }
-                       }).show();
+                .setTitle("Error")
+                .setMessage(message)
+                .setNegativeButton("Exit", new DialogInterface.OnClickListener() {
+                    public void onClick(final DialogInterface dialog, final int id) {
+                        dialog.dismiss();
+                    }
+                }).show();
     }
 
     @ReactMethod
@@ -562,8 +620,7 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
             OutputStreamWriter outputStreamWriter = new OutputStreamWriter(new FileOutputStream(dbFile));
             outputStreamWriter.write(dbJson);
             outputStreamWriter.close();
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             Log.e(TAG, "File write failed: " + e.toString());
             showErrorMessage(e.getLocalizedMessage());
         }
@@ -586,7 +643,7 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
             dumpAdbLogsTo(new FileOutputStream(statusLogFile));
 
             final Stack<String> errorList = new Stack<String>();
-            final Boolean zipped = zip(new File[] {dbFile, gethLogFile, statusLogFile}, zipFile, errorList);
+            final Boolean zipped = zip(new File[]{dbFile, gethLogFile, statusLogFile}, zipFile, errorList);
             if (zipped && zipFile.exists()) {
                 zipFile.setReadable(true, false);
                 callback.invoke(zipFile.getAbsolutePath());
@@ -598,8 +655,7 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
             showErrorMessage(e.getLocalizedMessage());
             e.printStackTrace();
             return;
-        }
-        finally {
+        } finally {
             dbFile.delete();
             statusLogFile.delete();
             zipFile.deleteOnExit();
@@ -615,13 +671,13 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
         }
 
         Runnable r = new Runnable() {
-                @Override
-                public void run() {
-                    String res = Statusgo.addPeer(enode);
+            @Override
+            public void run() {
+                String res = Statusgo.addPeer(enode);
 
-                    callback.invoke(res);
-                }
-            };
+                callback.invoke(res);
+            }
+        };
 
         StatusThreadPoolExecutor.getInstance().execute(r);
     }
@@ -751,6 +807,23 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
             @Override
             public void run() {
                 String res = Statusgo.multiAccountImportMnemonic(json);
+                callback.invoke(res);
+            }
+        };
+        StatusThreadPoolExecutor.getInstance().execute(r);
+    }
+
+    @ReactMethod
+    public void multiAccountImportPrivateKey(final String json, final Callback callback) {
+        Log.d(TAG, "multiAccountImportPrivateKey");
+        if (!checkAvailability()) {
+            callback.invoke(false);
+            return;
+        }
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                String res = Statusgo.multiAccountImportPrivateKey(json);
                 callback.invoke(res);
             }
         };
@@ -1045,138 +1118,205 @@ class StatusModule extends ReactContextBaseJavaModule implements LifecycleEventL
         }
     }
 
-  private Boolean is24Hour() {
-    return android.text.format.DateFormat.is24HourFormat(this.reactContext.getApplicationContext());
-  }
-
-  @ReactMethod
-  public void extractGroupMembershipSignatures(final String signaturePairs, final Callback callback) {
-    Log.d(TAG, "extractGroupMembershipSignatures");
-    if (!checkAvailability()) {
-      callback.invoke(false);
-      return;
+    private Boolean is24Hour() {
+        return android.text.format.DateFormat.is24HourFormat(this.reactContext.getApplicationContext());
     }
 
-    Runnable r = new Runnable() {
-      @Override
-      public void run() {
-        String result = Statusgo.extractGroupMembershipSignatures(signaturePairs);
+    @ReactMethod
+    public void extractGroupMembershipSignatures(final String signaturePairs, final Callback callback) {
+        Log.d(TAG, "extractGroupMembershipSignatures");
+        if (!checkAvailability()) {
+            callback.invoke(false);
+            return;
+        }
 
-        callback.invoke(result);
-      }
-    };
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                String result = Statusgo.extractGroupMembershipSignatures(signaturePairs);
 
-    StatusThreadPoolExecutor.getInstance().execute(r);
-  }
+                callback.invoke(result);
+            }
+        };
 
-  @ReactMethod
-  public void signGroupMembership(final String content, final Callback callback) {
-    Log.d(TAG, "signGroupMembership");
-    if (!checkAvailability()) {
-      callback.invoke(false);
-      return;
+        StatusThreadPoolExecutor.getInstance().execute(r);
     }
 
-    Runnable r = new Runnable() {
-      @Override
-      public void run() {
-        String result = Statusgo.signGroupMembership(content);
+    @ReactMethod
+    public void signGroupMembership(final String content, final Callback callback) {
+        Log.d(TAG, "signGroupMembership");
+        if (!checkAvailability()) {
+            callback.invoke(false);
+            return;
+        }
 
-        callback.invoke(result);
-      }
-    };
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                String result = Statusgo.signGroupMembership(content);
 
-    StatusThreadPoolExecutor.getInstance().execute(r);
-  }
+                callback.invoke(result);
+            }
+        };
 
-
-  @ReactMethod
-  public void updateMailservers(final String enodes, final Callback callback) {
-    Log.d(TAG, "updateMailservers");
-    if (!checkAvailability()) {
-      callback.invoke(false);
-      return;
+        StatusThreadPoolExecutor.getInstance().execute(r);
     }
 
-    Runnable r = new Runnable() {
-      @Override
-      public void run() {
-        String res = Statusgo.updateMailservers(enodes);
 
-        callback.invoke(res);
-      }
-    };
+    @ReactMethod
+    public void chaosModeUpdate(final boolean on, final Callback callback) {
+        Log.d(TAG, "chaosModeUpdate");
+        if (!checkAvailability()) {
+            callback.invoke(false);
+            return;
+        }
 
-    StatusThreadPoolExecutor.getInstance().execute(r);
-  }
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                String res = Statusgo.chaosModeUpdate(on);
 
-  @ReactMethod
-  public void chaosModeUpdate(final boolean on, final Callback callback) {
-    Log.d(TAG, "chaosModeUpdate");
-    if (!checkAvailability()) {
-      callback.invoke(false);
-      return;
+                callback.invoke(res);
+            }
+        };
+
+        StatusThreadPoolExecutor.getInstance().execute(r);
     }
 
-    Runnable r = new Runnable() {
-      @Override
-      public void run() {
-        String res = Statusgo.chaosModeUpdate(on);
-
-        callback.invoke(res);
-      }
-    };
-
-    StatusThreadPoolExecutor.getInstance().execute(r);
-  }
-
-  @ReactMethod(isBlockingSynchronousMethod = true)
-  public String generateAlias(final String seed) {
-    return Statusgo.generateAlias(seed);
-  }
-
-  @ReactMethod(isBlockingSynchronousMethod = true)
-  public String identicon(final String seed) {
-    return Statusgo.identicon(seed);
-  }
-
-
-  @ReactMethod
-  public void getNodesFromContract(final String rpcEndpoint, final String contractAddress, final Callback callback) {
-    Log.d(TAG, "getNodesFromContract");
-    if (!checkAvailability()) {
-      callback.invoke(false);
-      return;
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public String generateAlias(final String seed) {
+        return Statusgo.generateAlias(seed);
     }
 
-    Runnable r = new Runnable() {
-      @Override
-      public void run() {
-        String res = Statusgo.getNodesFromContract(rpcEndpoint, contractAddress);
+    @ReactMethod
+    public void generateAliasAsync(final String seed, final Callback callback) {
+        Log.d(TAG, "generateAliasAsync");
+        if (!checkAvailability()) {
+            callback.invoke(false);
+            return;
+        }
 
-        Log.d(TAG, res);
-        callback.invoke(res);
-      }
-    };
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                String res = Statusgo.generateAlias(seed);
 
-    StatusThreadPoolExecutor.getInstance().execute(r);
-  }
+                Log.d(TAG, res);
+                callback.invoke(res);
+            }
+        };
 
-  @Override
-  public @Nullable
-  Map<String, Object> getConstants() {
-    HashMap<String, Object> constants = new HashMap<String, Object>();
+        StatusThreadPoolExecutor.getInstance().execute(r);
+    }
 
-    constants.put("is24Hour", this.is24Hour());
-    constants.put("model", Build.MODEL);
-    constants.put("brand", Build.BRAND);
-    constants.put("buildId", Build.ID);
-    constants.put("deviceId", Build.BOARD);
-    return constants;
-  }
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public String identicon(final String seed) {
+        return Statusgo.identicon(seed);
+    }
 
-  @ReactMethod
-  public void isDeviceRooted(final Callback callback) {
-    callback.invoke(rootedDevice);
-  }
+    @ReactMethod
+    public void identiconAsync(final String seed, final Callback callback) {
+        Log.d(TAG, "identiconAsync");
+        if (!checkAvailability()) {
+            callback.invoke(false);
+            return;
+        }
+
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                String res = Statusgo.identicon(seed);
+
+                Log.d(TAG, res);
+                callback.invoke(res);
+            }
+        };
+
+        StatusThreadPoolExecutor.getInstance().execute(r);
+    }
+
+    @ReactMethod
+    public void generateAliasAndIdenticonAsync(final String seed, final Callback callback) {
+        Log.d(TAG, "generateAliasAndIdenticonAsync");
+        if (!checkAvailability()) {
+            callback.invoke(false);
+            return;
+        }
+
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                String resIdenticon = Statusgo.identicon(seed);
+                String resAlias = Statusgo.generateAlias(seed);
+
+                Log.d(TAG, resIdenticon);
+                Log.d(TAG, resAlias);
+                callback.invoke(resAlias, resIdenticon);
+            }
+        };
+
+        StatusThreadPoolExecutor.getInstance().execute(r);
+    }
+
+
+    @ReactMethod
+    public void getNodesFromContract(final String rpcEndpoint, final String contractAddress, final Callback callback) {
+        Log.d(TAG, "getNodesFromContract");
+        if (!checkAvailability()) {
+            callback.invoke(false);
+            return;
+        }
+
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                String res = Statusgo.getNodesFromContract(rpcEndpoint, contractAddress);
+
+                Log.d(TAG, res);
+                callback.invoke(res);
+            }
+        };
+
+        StatusThreadPoolExecutor.getInstance().execute(r);
+    }
+
+    @Override
+    public @Nullable
+    Map<String, Object> getConstants() {
+        HashMap<String, Object> constants = new HashMap<String, Object>();
+
+        constants.put("is24Hour", this.is24Hour());
+        constants.put("model", Build.MODEL);
+        constants.put("brand", Build.BRAND);
+        constants.put("buildId", Build.ID);
+        constants.put("deviceId", Build.BOARD);
+        return constants;
+    }
+
+    @ReactMethod
+    public void isDeviceRooted(final Callback callback) {
+        callback.invoke(rootedDevice);
+    }
+
+    @ReactMethod
+    public void validateMnemonic(final String seed, final Callback callback) {
+        Log.d(TAG, "validateMnemonic");
+        if (!checkAvailability()) {
+            callback.invoke(false);
+            return;
+        }
+
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                String resValidateMnemonic = Statusgo.validateMnemonic(seed);
+
+                Log.d(TAG, resValidateMnemonic);
+                callback.invoke(resValidateMnemonic);
+            }
+        };
+
+        StatusThreadPoolExecutor.getInstance().execute(r);
+    }
 }
+

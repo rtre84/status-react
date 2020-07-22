@@ -8,23 +8,27 @@
             [status-im.utils.fx :as fx]
             [status-im.utils.keychain.core :as keychain]))
 
-(fx/defn logout-method [{:keys [db] :as cofx} auth-method]
-  (let [address (get-in db [:multiaccount :address])]
+(fx/defn logout-method
+  [{:keys [db] :as cofx} {:keys [auth-method logout?]}]
+  (let [key-uid (get-in db [:multiaccount :key-uid])]
     (fx/merge cofx
               {::logout                      nil
-               :keychain/clear-user-password address
-               ::init/open-multiaccounts     #(re-frame/dispatch [::init/initialize-multiaccounts %])}
-              (keychain/save-auth-method address auth-method)
+               :keychain/clear-user-password key-uid
+               ::init/open-multiaccounts     #(re-frame/dispatch [::init/initialize-multiaccounts % {:logout? logout?}])}
+              (keychain/save-auth-method key-uid auth-method)
               (transport/stop-whisper)
               (chaos-mode/stop-checking)
               (init/initialize-app-db))))
 
 (fx/defn logout
-  {:events [:logout]}
+  {:events [:logout :multiaccounts.logout.ui/logout-confirmed]}
   [cofx]
-  (logout-method cofx "none"))
+  (logout-method cofx {:auth-method keychain/auth-method-none
+                       :logout?     true}))
 
-(fx/defn show-logout-confirmation [_]
+(fx/defn show-logout-confirmation
+  {:events [:multiaccounts.logout.ui/logout-pressed]}
+  [_]
   {:ui/show-confirmation
    {:title               (i18n/label :t/logout-title)
     :content             (i18n/label :t/logout-are-you-sure)
@@ -34,9 +38,10 @@
 
 (fx/defn biometric-logout
   {:events [:biometric-logout]}
-  [{:keys [db] :as cofx}]
+  [cofx]
   (fx/merge cofx
-            (logout-method "biometric-prepare")
+            (logout-method {:auth-method keychain/auth-method-biometric-prepare
+                            :logout?     false})
             (fn [{:keys [db]}]
               {:db (assoc-in db [:multiaccounts/login :save-password?] true)})))
 

@@ -1,33 +1,6 @@
 (ns status-im.ui.screens.wallet.transactions.styles
   (:require [status-im.ui.components.colors :as colors]
-            [status-im.ui.components.tabbar.styles :as tabs.styles]
             [status-im.utils.styles :as styles]))
-
-(defn tab [active?]
-  {:flex                1
-   :height              tabs.styles/tab-height
-   :justify-content     :center
-   :align-items         :center
-   :padding-bottom      (if active? 0 1)
-   :border-bottom-width (if active? 2 1)
-   :border-bottom-color (if active?
-                          colors/blue
-                          colors/gray)})
-
-(def tabs-container
-  {:flex-direction :row
-   :height         tabs.styles/tab-height})
-
-(defn tab-title
-  [active?]
-  {:text-align :center
-   :color      (if active?
-                 colors/blue
-                 colors/black)})
-
-(def transactions
-  {:flex             1
-   :background-color :white})
 
 (def forward
   {:color colors/gray})
@@ -64,10 +37,6 @@
    :padding-left   17
    :padding-top    4})
 
-(def address-item
-  {:font-size 16
-   :color     colors/gray})
-
 (def address-label
   {:margin-right 5
    :font-size    16
@@ -81,20 +50,6 @@
   {:flex-shrink 1
    :font-size 16
    :color     colors/gray})
-
-(def sign-all-view
-  {:flex              1
-   :flex-direction    :column
-   :justify-content   :center
-   :background-color  colors/gray})
-
-(def sign-all-done
-  {:position :absolute
-   :right    0
-   :top      0})
-
-(def sign-all-done-button
-  {:background-color :transparent})
 
 (defn transaction-icon-background [color]
   {:justify-content  :center
@@ -182,19 +137,3 @@
   {:background-color colors/black-transparent
    :height           1
    :margin-vertical  10})
-
-(def corner-dot
-  {:position         :absolute
-   :top              0
-   :right            0
-   :width            4
-   :height           4
-   :border-radius    2
-   :background-color colors/blue})
-
-(def filter-container
-  {:flex 1})
-
-(def transactions-view
-  {:flex             1
-   :background-color :white})

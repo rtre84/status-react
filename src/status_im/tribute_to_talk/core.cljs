@@ -2,19 +2,18 @@
   (:refer-clojure :exclude [remove])
   (:require [clojure.string :as string]
             [re-frame.core :as re-frame]
-            [status-im.multiaccounts.update.core :as multiaccounts.update]
             [status-im.contact.core :as contact]
             [status-im.ethereum.contracts :as contracts]
             [status-im.ethereum.core :as ethereum]
             [status-im.ethereum.json-rpc :as json-rpc]
             [status-im.ethereum.transactions.core :as transactions]
+            [status-im.multiaccounts.update.core :as multiaccounts.update]
+            [status-im.signing.core :as signing]
             [status-im.tribute-to-talk.db :as tribute-to-talk.db]
             [status-im.tribute-to-talk.whitelist :as whitelist]
-            [status-im.ui.screens.navigation :as navigation]
+            [status-im.navigation :as navigation]
             [status-im.utils.fx :as fx]
-            [status-im.utils.money :as money]
-            [taoensso.timbre :as log]
-            [status-im.signing.core :as signing]))
+            [taoensso.timbre :as log]))
 
 (defn add-transaction-hash
   [message db]
@@ -29,24 +28,25 @@
 
 (fx/defn update-settings
   [{:keys [db] :as cofx} {:keys [snt-amount message update] :as new-settings}]
-  (let [multiaccount-settings (get-in db [:multiaccount :settings])
+  (let [tribute-to-talk-settings (get-in db [:multiaccount :tribute-to-talk])
         chain-keyword    (ethereum/chain-keyword db)
-        tribute-to-talk-settings (cond-> (merge (tribute-to-talk.db/get-settings db)
-                                                new-settings)
-                                   new-settings
-                                   (assoc :seen? true)
+        tribute-to-talk-chain-settings
+        (cond-> (merge (tribute-to-talk.db/get-settings db)
+                       new-settings)
+          new-settings
+          (assoc :seen? true)
 
-                                   (not new-settings)
-                                   (dissoc :snt-amount :manifest)
+          (not new-settings)
+          (dissoc :snt-amount :manifest)
 
-                                   (and (contains? new-settings :update)
-                                        (nil? update))
-                                   (dissoc :update))]
+          (and (contains? new-settings :update)
+               (nil? update))
+          (dissoc :update))]
     (fx/merge cofx
-              (multiaccounts.update/update-settings
-               (-> multiaccount-settings
-                   (assoc-in [:tribute-to-talk chain-keyword]
-                             tribute-to-talk-settings))
+              (multiaccounts.update/multiaccount-update
+               :tribute-to-talk (assoc tribute-to-talk-settings
+                                       chain-keyword
+                                       tribute-to-talk-chain-settings)
                {})
               (whitelist/enable-whitelist))))
 

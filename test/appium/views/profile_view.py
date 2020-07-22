@@ -48,6 +48,23 @@ class OptionsButton(BaseButton):
             super(OptionsButton.UserStatusInput, self).__init__(driver)
             self.locator = self.Locator.xpath_selector('(//android.widget.EditText)[2]')
 
+class AddNewContactButton(BaseButton):
+
+    def __init__(self, driver):
+        super(AddNewContactButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('add-new-contact-button')
+
+    def navigate(self):
+        from views.contacts_view import ContactsView
+        return ContactsView(self.driver)
+
+
+class InviteFriendsInContactsButton(BaseButton):
+
+    def __init__(self, driver):
+        super(InviteFriendsInContactsButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('invite-friends')
+
 
 class NetworkSettingsButton(BaseButton):
 
@@ -104,8 +121,20 @@ class ConfirmLogoutButton(BaseButton):
 class DefaultUserNameText(BaseText):
     def __init__(self, driver):
         super(DefaultUserNameText, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector(
-            '//android.view.ViewGroup[@content-desc="edit-profile-photo-button"]/../android.widget.TextView')
+        self.locator = self.Locator.accessibility_id('default-username')
+
+class ENSusernames(BaseButton):
+    def __init__(self, driver):
+        super(ENSusernames, self).__init__(driver)
+        self.locator = self.Locator.text_selector('ENS usernames')
+
+    def navigate(self):
+        from views.dapps_view import DappsView
+        return DappsView(self.driver)
+
+    def click(self):
+        self.scroll_to_element().click()
+        return self.navigate()
 
 
 class ShareMyProfileButton(BaseButton):
@@ -119,6 +148,12 @@ class ProfilePictureElement(BaseElement):
     def __init__(self, driver):
         super(ProfilePictureElement, self).__init__(driver)
         self.locator = self.Locator.accessibility_id('chat-icon')
+
+
+class ProfileDetailsOtherUser(BaseElement):
+    def __init__(self, driver):
+        super(ProfileDetailsOtherUser, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('profile-public-key')
 
 
 class EditPictureButton(BaseButton):
@@ -143,18 +178,19 @@ class CrossIcon(BaseButton):
         self.locator = self.Locator.accessibility_id('done-button')
 
 
-class ShareButton(BaseButton):
+
+class ENSUsernameInShareChatKeyPopup(BaseText):
 
     def __init__(self, driver):
-        super(ShareButton, self).__init__(driver)
-        self.locator = self.Locator.accessibility_id('share-my-contact-code-button')
+        super(ENSUsernameInShareChatKeyPopup, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('ens-username')
 
 
 class AdvancedButton(BaseButton):
 
     def __init__(self, driver):
         super(AdvancedButton, self).__init__(driver)
-        self.locator = self.Locator.text_selector('Advanced')
+        self.locator = self.Locator.accessibility_id('advanced-button')
 
     def click(self):
         self.scroll_to_element().click()
@@ -167,6 +203,7 @@ class LogLevelSetting(BaseButton):
     def __init__(self, driver):
         super(LogLevelSetting, self).__init__(driver)
         self.locator = self.Locator.xpath_selector('//*[@content-desc="log-level-settings-button"]/android.widget.TextView[2]')
+
 
 class BackupRecoveryPhraseButton(BaseButton):
 
@@ -184,7 +221,7 @@ class OkContinueButton(BaseButton):
 
     def __init__(self, driver):
         super(OkContinueButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='Ok, continue']")
+        self.locator = self.Locator.xpath_selector("//*[@text='Okay, continue']")
 
 
 class RecoveryPhraseTable(BaseText):
@@ -212,14 +249,6 @@ class RecoveryPhraseWordInput(BaseEditBox):
     def __init__(self, driver):
         super(RecoveryPhraseWordInput, self).__init__(driver)
         self.locator = self.Locator.xpath_selector('//android.widget.EditText')
-
-
-class OkGotItButton(BaseButton):
-
-    def __init__(self, driver):
-        super(OkGotItButton, self).__init__(driver)
-        self.locator = self.Locator.text_selector('OK, got it')
-
 
 class DebugModeToggle(BaseButton):
 
@@ -340,15 +369,14 @@ class AddBootnodeButton(BaseButton):
 
     def __init__(self, driver):
         super(AddBootnodeButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("(//*[@content-desc='icon'])[2]")
+        self.locator = self.Locator.accessibility_id("add-bootnode")
 
 
 class BootnodeAddressInput(BaseEditBox):
 
     def __init__(self, driver):
         super(BootnodeAddressInput, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector(
-            "//*[@text='Bootnode address']/following-sibling::*[1]/android.widget.EditText")
+        self.locator = self.Locator.accessibility_id("bootnode-address")
 
 
 class EnableBootnodesToggle(BaseEditBox):
@@ -376,7 +404,7 @@ class MailServerAddressInput(BaseEditBox):
 class MailServerAutoSelectionButton(BaseButton):
     def __init__(self, driver):
         super(MailServerAutoSelectionButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[contains(@text,'Automatic selection')]")
+        self.locator = self.Locator.accessibility_id("checkbox")
 
 
 class MailServerElement(BaseButton):
@@ -397,6 +425,17 @@ class MailServerConnectButton(BaseButton):
         super(MailServerConnectButton, self).__init__(driver)
         self.locator = self.Locator.accessibility_id('mailserver-connect-button')
 
+class MailServerDeleteButton(BaseButton):
+
+    def __init__(self, driver):
+        super(MailServerDeleteButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('mailserver-delete-button')
+
+class MailServerConfirmDeleteButton(BaseButton):
+
+    def __init__(self, driver):
+        super(MailServerConfirmDeleteButton, self).__init__(driver)
+        self.locator = self.Locator.text_selector('DELETE MAILSERVER')
 
 class ActiveNetworkName(BaseText):
 
@@ -417,6 +456,12 @@ class AboutButton(BaseButton):
     def click(self):
         self.scroll_to_element().click()
         return self.navigate()
+
+
+class PrifileNotificationsButton(BaseButton):
+    def __init__(self, driver):
+        super().__init__(driver)
+        self.locator = self.Locator.accessibility_id("notifications-button")
 
 
 class RemovePictureButton(BaseButton):
@@ -446,7 +491,11 @@ class ContinueButton(BaseButton):
 class SyncSettingsButton(BaseButton):
     def __init__(self, driver):
         super(SyncSettingsButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector('//*[@content-desc="sync-settings-button"]')
+        self.locator = self.Locator.accessibility_id('sync-settings-button')
+
+    def click(self):
+        self.scroll_to_element().click()
+        self.driver.info('Tap on %s' % self.name)
 
 
 class GoToPairingSettingsButton(BaseButton):
@@ -478,7 +527,13 @@ class SyncAllButton(BaseButton):
 class ContactsButton(BaseButton):
     def __init__(self, driver):
         super(ContactsButton, self).__init__(driver)
-        self.locator = self.Locator.text_selector('Contacts')
+        self.locator = self.Locator.accessibility_id('contacts-button')
+
+
+class BlockedUsersButton(BaseButton):
+    def __init__(self, driver):
+        super(BlockedUsersButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('blocked-users-list-button')
 
 
 class DappPermissionsButton(BaseButton):
@@ -502,25 +557,23 @@ class PrivacyAndSecurityButton(BaseButton):
         super(PrivacyAndSecurityButton, self).__init__(driver)
         self.locator = self.Locator.accessibility_id('privacy-and-security-settings-button')
 
-
-class ShowENSNameInChatsToggle(BaseButton):
-    def __init__(self, driver):
-        super(ShowENSNameInChatsToggle, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector(
-            "//*[@text='Show my ENS username in chats']/following-sibling::*[1][name()='android.widget.Switch'] ")
-
 class UseMobileDataToggle(BaseButton):
     def __init__(self, driver):
         super(UseMobileDataToggle, self).__init__(driver)
         self.locator = self.Locator.xpath_selector(
-            "//*[@text='Use mobile data']/../*[name()='android.widget.Switch']")
+            "//*[@text='Use mobile data']/following-sibling::android.widget.Switch[1]")
 
 class AskMeWhenOnMobileNetworkToggle(BaseButton):
     def __init__(self, driver):
         super(AskMeWhenOnMobileNetworkToggle, self).__init__(driver)
         self.locator = self.Locator.xpath_selector(
-            "//*[@text='Ask me when on mobile network']/../*[name()='android.widget.Switch']")
+            "//*[@text='Ask me when on mobile network']/following-sibling::android.widget.Switch[1]")
 
+class ENSUsernameInChatSettings(BaseElement):
+    def __init__(self, driver):
+        super(ENSUsernameInChatSettings, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector(
+            "//*[@content-desc='chat-icon']/../android.widget.TextView[2]")
 
 
 class ProfileView(BaseView):
@@ -559,11 +612,14 @@ class ProfileView(BaseView):
         self.remove_picture_button = RemovePictureButton(self.driver)
         self.confirm_edit_button = ConfirmEditButton(self.driver)
         self.cross_icon = CrossIcon(self.driver)
-        self.share_button = ShareButton(self.driver)
+        self.profile_notifications_button = PrifileNotificationsButton(self.driver)
         self.advanced_button = AdvancedButton(self.driver)
         self.log_level_setting = LogLevelSetting(self.driver)
         self.debug_mode_toggle = DebugModeToggle(self.driver)
         self.contacts_button = ContactsButton(self.driver)
+        self.blocked_users_button = BlockedUsersButton(self.driver)
+        self.add_new_contact_button = AddNewContactButton(self.driver)
+        self.invite_friends_in_contact_button = InviteFriendsInContactsButton(self.driver)
         self.dapp_permissions_button = DappPermissionsButton(self.driver)
         self.revoke_access_button = RevokeAccessButton(self.driver)
         self.privacy_and_security_button = PrivacyAndSecurityButton(self.driver)
@@ -574,7 +630,6 @@ class ProfileView(BaseView):
         self.recovery_phrase_table = RecoveryPhraseTable(self.driver)
         self.recovery_phrase_word_number = RecoveryPhraseWordNumberText(self.driver)
         self.recovery_phrase_word_input = RecoveryPhraseWordInput(self.driver)
-        self.ok_got_it_button = OkGotItButton(self.driver)
 
         self.select_from_gallery_button = SelectFromGalleryButton(self.driver)
         self.capture_button = CaptureButton(self.driver)
@@ -590,12 +645,15 @@ class ProfileView(BaseView):
         self.bootnodes_button = BootnodesButton(self.driver)
         self.bootnode_address_input = BootnodeAddressInput(self.driver)
         self.enable_bootnodes = EnableBootnodesToggle(self.driver)
+        self.add_bootnode_button = AddBootnodeButton(self.driver)
 
         # Mailservers
         self.mail_server_button = MailServerButton(self.driver)
         self.mail_server_address_input = MailServerAddressInput(self.driver)
         self.mail_server_connect_button = MailServerConnectButton(self.driver)
         self.mail_server_auto_selection_button = MailServerAutoSelectionButton(self.driver)
+        self.mail_server_delete_button = MailServerDeleteButton(self.driver)
+        self.mail_server_confirm_delete_button = MailServerConfirmDeleteButton(self.driver)
 
         # Pairing
         self.devices_button = DevicesButton(self.driver)
@@ -606,16 +664,16 @@ class ProfileView(BaseView):
         self.sync_all_button = SyncAllButton(self.driver)
 
         # ENS
-        self.show_ens_name_in_chats = ShowENSNameInChatsToggle(self.driver)
+        self.username_in_ens_chat_settings_text = ENSUsernameInChatSettings(self.driver)
+        self.ens_usernames_button = ENSusernames(self.driver)
+        self.ens_name_in_share_chat_key_text = ENSUsernameInShareChatKeyPopup(self.driver)
 
         # Mobile Data
         self.use_mobile_data = UseMobileDataToggle(self.driver)
         self.ask_me_when_on_mobile_network = AskMeWhenOnMobileNetworkToggle(self.driver)
 
-    def switch_network(self, network):
+    def switch_network(self, network='Mainnet with upstream RPC'):
         self.advanced_button.click()
-        self.debug_mode_toggle.click()
-        self.network_settings_button.scroll_to_element(10, 'up')
         self.network_settings_button.click()
         network_button = NetworkSettingsButton.NetworkButton(self.driver, network)
         network_button.click()
@@ -625,18 +683,24 @@ class ProfileView(BaseView):
         signin_view = SignInView(self.driver)
         signin_view.sign_in()
 
+    def open_contact_from_profile(self, username):
+        self.contacts_button.click()
+        self.element_by_text(username).click()
+        from views.chat_view import ChatView
+        return ChatView(self.driver)
+
     def switch_development_mode(self):
         self.advanced_button.click()
         self.debug_mode_toggle.click()
 
     def add_custom_network(self):
         self.advanced_button.click()
-        self.debug_mode_toggle.click()
         self.network_settings_button.scroll_to_element()
         self.network_settings_button.click()
         self.plus_button.click_until_presence_of_element(self.ropsten_chain_button)
         self.custom_network_url.send_keys('https://ropsten.infura.io/v3/f315575765b14720b32382a61a89341a')
         self.specify_name_input.send_keys('custom_ropsten')
+        self.ropsten_chain_button.scroll_to_element()
         self.ropsten_chain_button.click()
         self.ropsten_chain_button.click()
         self.save_button.click()
@@ -702,6 +766,33 @@ class ProfileView(BaseView):
         self.device_name_input.set_value(device_name)
         self.continue_button.click_until_presence_of_element(self.advertise_device_button, 2)
         self.advertise_device_button.click()
+
+    def retry_to_connect_to_mailserver(self):
+        i = 0
+        while self.element_by_text_part("Error connecting").is_element_present(20) and i < 5:
+            self.element_by_text('RETRY').click()
+            i += 1
+            self.just_fyi("retrying to connect: %s attempt" % i)
+            # TODO: uncomment after  https://github.com/status-im/status-react/issues/9269
+            time.sleep(10)
+        if i == 5:
+            self.driver.fail("Failed to connect after %s attempts" % i)
+
+    def connect_existing_status_ens(self, name):
+        self.just_fyi('switching to mainnet and add ENS')
+        profile = self.profile_button.click()
+        profile.switch_network('Mainnet with upstream RPC')
+        self.profile_button.click()
+        dapp_view = self.ens_usernames_button.click()
+        dapp_view.element_by_text('Get started').click()
+        dapp_view.ens_name.set_value(name)
+        dapp_view.check_ens_name.click_until_presence_of_element(self.element_by_text('Ok, got it'))
+        dapp_view.element_by_text('Ok, got it').click()
+        return dapp_view
+
+    def return_mailserver_name(self, mailserver_name, fleet):
+        return mailserver_name + '.' + fleet
+
 
     @property
     def current_active_network(self):

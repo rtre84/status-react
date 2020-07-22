@@ -1,88 +1,41 @@
 (ns status-im.multiaccounts.update.core
-  (:require [status-im.contact.db :as contact.db]
-            [status-im.contact.device-info :as device-info]
-            [status-im.ethereum.json-rpc :as json-rpc]
-            [status-im.transport.message.contact :as message.contact]
-            [status-im.transport.message.protocol :as protocol]
+  (:require [status-im.ethereum.json-rpc :as json-rpc]
             [status-im.utils.fx :as fx]
-            [status-im.utils.types :as types]
             [taoensso.timbre :as log]))
 
-(fx/defn multiaccount-update-message [{:keys [db] :as cofx}]
+(fx/defn send-multiaccount-update [{:keys [db] :as cofx}]
   (let [multiaccount (:multiaccount db)
-        fcm-token (get-in db [:notifications :fcm-token])
         {:keys [name preferred-name photo-path address]} multiaccount]
-    (message.contact/ContactUpdate. (or preferred-name name) photo-path address fcm-token (device-info/all cofx))))
-
-(fx/defn send-multiaccount-update [cofx]
-  (protocol/send
-   (multiaccount-update-message cofx)
-   nil
-   cofx))
-
-(fx/defn send-contact-update-fx
-  [{:keys [db] :as cofx} chat-id payload]
-  (protocol/send-with-pubkey cofx
-                             {:chat-id       chat-id
-                              :payload       payload
-                              :success-event [:transport/contact-message-sent chat-id]}))
-
-(fx/defn contact-public-keys [{:keys [db]}]
-  (reduce (fn [acc [_ {:keys [public-key] :as contact}]]
-            (if (contact.db/active? contact)
-              (conj acc public-key)
-              acc))
-          #{}
-          (:contacts/contacts db)))
-
-(fx/defn send-contact-update [cofx payload]
-  (let [public-keys (contact-public-keys cofx)]
-    ;;NOTE: chats with contacts use public-key as chat-id
-    (map #(send-contact-update-fx % payload) public-keys)))
+    {::json-rpc/call [{:method (json-rpc/call-ext-method (get-in db [:multiaccount :waku-enabled]) "sendContactUpdates")
+                       :params [(or preferred-name name) photo-path]
+                       :on-success #(log/debug "sent contact update")}]}))
 
 (fx/defn multiaccount-update
   "Takes effects (containing :db) + new multiaccount fields, adds all effects necessary for multiaccount update.
   Optionally, one can specify a success-event to be dispatched after fields are persisted."
   [{:keys [db] :as cofx}
-   new-multiaccount-fields
-   {:keys [on-success] :or {on-success #()}}]
-  (let [current-multiaccount (:multiaccount db)
-        new-multiaccount     (merge current-multiaccount new-multiaccount-fields)
-        fx              {:db (assoc db :multiaccount new-multiaccount)
-                         ::json-rpc/call
-                         [{:method "settings_saveConfig"
-                           :params ["multiaccount" (types/serialize new-multiaccount)]
-                           :on-success on-success}]}
-        {:keys [name photo-path prefered-name]} new-multiaccount-fields]
+   setting setting-value
+   {:keys [dont-sync? on-success] :or {on-success #()}}]
+  (let [current-multiaccount (:multiaccount db)]
     (if (empty? current-multiaccount)
       ;; NOTE: this should never happen, but if it does this is a critical error
       ;; and it is better to crash than risk having an unstable state
       (throw (js/Error. "Please shake the phone to report this error and restart the app. multiaccount is currently empty, which means something went wrong when trying to update it with"))
-      (if (or name photo-path prefered-name)
-        (fx/merge cofx
-                  fx
-                  (send-multiaccount-update))
-        fx))))
+      (fx/merge cofx
+                {:db (if setting-value
+                       (assoc-in db [:multiaccount setting] setting-value)
+                       (update db :multiaccount dissoc setting))
+                 ::json-rpc/call
+                 [{:method "settings_saveSetting"
+                   :params [setting setting-value]
+                   :on-success on-success}]}
+                (when (and (not dont-sync?)
+                           (#{:name :photo-path :prefered-name} setting))
+                  (send-multiaccount-update))))))
 
 (fx/defn clean-seed-phrase
   "A helper function that removes seed phrase from storage."
   [cofx]
   (multiaccount-update cofx
-                       {:seed-backed-up? true
-                        :mnemonic        nil}
+                       :mnemonic nil
                        {}))
-
-(fx/defn update-settings
-  [{{:keys [multiaccount] :as db} :db :as cofx}
-   settings
-   {:keys [on-success] :or {on-success #()}}]
-  (let [new-multiaccount (assoc multiaccount :settings settings)]
-    (if (empty? multiaccount)
-      ;; NOTE: this should never happen, but if it does this is a critical error
-      ;; and it is better to crash than risk having an unstable state
-      (throw (js/Error. "Please shake the phone to report this error and restart the app. multiaccount is currently empty, which means something went wrong when trying to update settings"))
-      {:db (assoc db :multiaccount new-multiaccount)
-       ::json-rpc/call
-       [{:method "settings_saveConfig"
-         :params ["multiaccount" (types/serialize new-multiaccount)]
-         :on-success on-success}]})))

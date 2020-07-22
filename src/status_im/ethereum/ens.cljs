@@ -7,13 +7,14 @@
   (:refer-clojure :exclude [name])
   (:require [clojure.string :as string]
             [status-im.ethereum.core :as ethereum]
-            [status-im.ethereum.json-rpc :as json-rpc]))
+            [status-im.ethereum.json-rpc :as json-rpc]
+            [status-im.ethereum.abi-spec :as abi-spec]))
 
 ;; this is the addresses of ens registries for the different networks
 (def ens-registries
-  {:mainnet "0x314159265dd8dbb310642f98f50c066173c1259b"
-   :testnet "0x112234455c3a32fd11230c42e7bccd4a84e02010"
-   :rinkeby "0xe7410170f87102DF0055eB195163A03B7F2Bff4A"})
+  {:mainnet "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
+   :testnet "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
+   :rinkeby "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"})
 
 (def default-namehash "0000000000000000000000000000000000000000000000000000000000000000")
 (def default-address "0x0000000000000000000000000000000000000000")
@@ -21,14 +22,14 @@
 
 (defn namehash
   [s]
-  (ethereum/normalized-address
+  (ethereum/normalized-hex
    (if (string/blank? s)
      default-namehash
      (let [[label remainder] (-> s
                                  string/lower-case
                                  (string/split #"\." 2))]
-       (ethereum/sha3 (+ (namehash remainder)
-                         (subs (ethereum/sha3 label) 2)))))))
+       (ethereum/sha3 (str (namehash remainder)
+                           (subs (ethereum/sha3 label) 2)))))))
 
 ;; Registry contract
 
@@ -96,6 +97,24 @@
     (fn [[name]]
       (cb name))}))
 
+(defn cleanup-hash [raw-hash]
+  ;; NOTE: it would be better if our abi-spec/decode was able to do that
+  (let [;; ignore hex prefix
+        [_ raw-hash-rest] (split-at 2 raw-hash)
+        ;; the first field gives us the length of the next one in hex and has
+        ;; a length of 32 bytes
+        ;; 1 byte is 2 chars here
+        [next-field-length-hex raw-hash-rest] (split-at 64 raw-hash-rest)
+        next-field-length (* ^number (abi-spec/hex-to-number (string/join next-field-length-hex)) 2)
+        ;; we get the next field which is the length of the hash and is
+        ;; expected to be 32 bytes as well
+        [hash-field-length-hex raw-hash-rest]  (split-at next-field-length
+                                                         raw-hash-rest)
+        hash-field-length (* ^number (abi-spec/hex-to-number (string/join hash-field-length-hex)) 2)
+        ;; we get the hash
+        [hash _] (split-at hash-field-length raw-hash-rest)]
+    (str "0x" (string/join hash))))
+
 (defn contenthash
   [resolver ens-name cb]
   (json-rpc/eth-call
@@ -105,10 +124,7 @@
     :on-success
     (fn [raw-hash]
       ;; NOTE: it would be better if our abi-spec/decode was able to do that
-      (let [hash (subs raw-hash 130)
-            [cid & hash-and-zeros] (string/split hash "1b20")
-            hash (str "0x" cid "1b20" (subs (apply str hash-and-zeros) 0 64))]
-        (cb hash)))}))
+      (cb (cleanup-hash raw-hash)))}))
 
 (defn content
   [resolver ens-name cb]
@@ -160,4 +176,7 @@
             ens-name
             #(addr % ens-name cb)))
 
-;; TODO ABI, pubkey
+(defn get-owner
+  [registry ens-name cb]
+  {:pre [(is-valid-eth-name? ens-name)]}
+  (owner registry ens-name cb))

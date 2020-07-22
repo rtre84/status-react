@@ -1,6 +1,6 @@
 pipeline {
 
-  agent { label 'linux1' }
+  agent { label 'linux' }
 
   parameters {
     string(
@@ -26,6 +26,11 @@ pipeline {
       name: 'PR_ID',
       description: 'ID of the Pull Request triggering this build.',
     )
+    string(
+      name: 'TR_CASE_IDS',
+      description: 'IDs of the TestRail case, separated by a comma. (Optional)',
+      defaultValue: '',
+    )
   }
 
   options {
@@ -33,14 +38,33 @@ pipeline {
   }
 
   stages {
+    stage('Checks') {
+      steps { script {
+        if (params.APK_NAME == null) { error("APK_NAME parameter not set!") }
+        if (params.PR_ID == null) { error("PR_ID parameter not set!") }
+      } }
+    }
+    stage('Setup') {
+      steps { script {
+        dir('test/appium') {
+          sh 'pip3 install --user -r requirements.txt'
+        }
+      } }
+    }
     stage('Test') {
       steps { script {
         currentBuild.displayName = "PR-${params.PR_ID}"
+        /* for managing optional arguments */
+        def extraPytestOpts = ''
+        if (params.TR_CASE_IDS != '') {
+          extraPytestOpts = "--run_testrail_ids='${params.TR_CASE_IDS}'"
+        }
 
         withCredentials([
-          string(
-            credentialsId: 'GIT_HUB_TOKEN',
-            variable: 'GIT_HUB_TOKEN'
+          usernamePassword(
+            credentialsId: 'status-im-auto-token',
+            usernameVariable: 'GIT_HUB_USER', /* ignored */
+            passwordVariable: 'GIT_HUB_TOKEN'
           ),
           usernamePassword(
             credentialsId:  'test-rail-api',
@@ -52,6 +76,10 @@ pipeline {
             usernameVariable: 'SAUCE_USERNAME',
             passwordVariable: 'SAUCE_ACCESS_KEY'
           ),
+          string(
+            credentialsId: 'etherscan-api-key',
+            variable: 'ETHERSCAN_API_KEY'
+          ),
         ]) {
           dir('test/appium/tests') {
             sh """
@@ -62,7 +90,8 @@ pipeline {
                 --network=${params.NETWORK} \
                 --apk=${params.APK_NAME} \
                 --build=PR-${params.PR_ID} \
-                --pr_number=${params.PR_ID}
+                --pr_number=${params.PR_ID} \
+                ${extraPytestOpts}
             """
           }
         }

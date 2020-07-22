@@ -5,14 +5,15 @@
    [status-im.utils.fx :as fx]
    [status-im.ui.components.bottom-sheet.core :as bottom-sheet]
    [status-im.multiaccounts.model :as multiaccounts.model]
-   [status-im.ui.screens.navigation :as navigation]
+   [status-im.navigation :as navigation]
    [status-im.mailserver.core :as mailserver]
    [status-im.ui.screens.mobile-network-settings.utils :as utils]))
 
 (fx/defn sheet-defaults
   [{:keys [db]}]
   (let [remember-choice? (get-in db [:multiaccount :remember-syncing-choice?])]
-    {:db (assoc db :mobile-network/remember-choice? remember-choice?)}))
+    {:db (assoc db :mobile-network/remember-choice? (or (nil? remember-choice?)
+                                                        remember-choice?))}))
 
 (fx/defn on-network-status-change
   [{:keys [db] :as cofx}]
@@ -32,7 +33,8 @@
         (sheet-defaults)]
 
        logged-in?
-       [(bottom-sheet/hide-bottom-sheet)]))))
+       [(mailserver/process-next-messages-request)
+        (bottom-sheet/hide-bottom-sheet)]))))
 
 (defn apply-settings
   ([sync?] (apply-settings sync? :default))
@@ -46,9 +48,9 @@
        (fx/merge
         cofx
         (multiaccounts.update/multiaccount-update
-         {:syncing-on-mobile-network? sync?
-          :remember-syncing-choice?   remember-choice?}
-         {})
+         :syncing-on-mobile-network? (boolean sync?) {})
+        (multiaccounts.update/multiaccount-update
+         :remember-syncing-choice? (boolean remember-choice?) {})
         (bottom-sheet/hide-bottom-sheet)
         (when (and (utils/cellular? network) sync?)
           (mailserver/process-next-messages-request)))))))
@@ -88,7 +90,8 @@
    (fx/merge
     cofx
     (bottom-sheet/hide-bottom-sheet)
-    (navigation/navigate-to-cofx :mobile-network-settings {}))))
+    (navigation/navigate-to-cofx :profile-stack {:screen  :mobile-network-settings
+                                                 :initial false}))))
 
 ;;:mobile-network-offline
 

@@ -1,18 +1,15 @@
 (ns status-im.ui.screens.log-level-settings.styles
   (:require [status-im.ui.components.colors :as colors]
-            [status-im.utils.platform :as platform]
             [status-im.utils.styles :as styles]))
 
 (def wrapper
-  {:flex             1
-   :background-color :white})
+  {:flex             1})
 
 (def log-level-item-inner
   {:padding-horizontal 16})
 
 (styles/def log-level-item
   {:flex-direction     :row
-   :background-color   :white
    :align-items        :center
    :padding-horizontal 16
    :ios                {:height 64}
@@ -20,11 +17,6 @@
 
 (def log-level-item-name-text
   {:typography :title})
-
-(def log-level-item-connected-text
-  {:color      colors/gray
-   :font-size  14
-   :margin-top 6})
 
 (defn log-level-icon-container [current?]
   {:width            40
@@ -37,5 +29,5 @@
    :justify-content  :center})
 
 (defn log-level-icon [current?]
-  (hash-map (if platform/desktop? :tint-color :color)
-            (if current? :white :gray)))
+  (hash-map :color
+            (if current? colors/white-persist colors/gray)))

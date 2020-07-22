@@ -51,6 +51,7 @@
 (def text-input-class (get-web-class "TextInput"))
 (def image-class (get-web-class "Image"))
 (def picker-obj nil)
+(def animated-flat-list-class #())
 (defn picker-class [] )
 (defn picker-item-class [] )
 
@@ -91,14 +92,13 @@
 (def dimensions nil)
 (def keyboard nil)
 (def linking nil)
-(def desktop-notification nil)
 
 (def max-font-size-multiplier 1.25)
 
 (defn prepare-text-props [props]
   (-> props
       (update :style typography/get-style)
-      (update :style assoc :font-family "Inter")
+      (update-in [:style :font-family] #(or % "Inter"))
       (assoc :max-font-size-multiplier max-font-size-multiplier)))
 
 (defn prepare-nested-text-props [props]
@@ -323,8 +323,6 @@
   (views/letsubs []
     (let [main-screen-view (create-main-screen-view current-view)]
       [main-screen-view styles/flex
-       [(if (= current-view :chat-modal)
-          view
-          keyboard-avoiding-view)
+       [keyboard-avoiding-view
         {:flex 1 :flex-direction :column}
         (apply vector view styles/flex components)]])))

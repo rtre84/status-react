@@ -1,7 +1,6 @@
 import time
 
 import base64
-import pytest
 import random
 import re
 import string
@@ -14,7 +13,7 @@ from io import BytesIO
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, StaleElementReferenceException
 
 from support.device_apps import start_web_browser
-from tests import common_password
+from tests import common_password, pytest_config_global
 from views.base_element import BaseButton, BaseElement, BaseEditBox, BaseText
 
 
@@ -44,11 +43,21 @@ class AllowButton(BaseButton):
             pass
 
 
+class SearchEditBox(BaseEditBox):
+    def __init__(self, driver):
+        super(SearchEditBox, self).__init__(driver)
+        self.locator = self.Locator.text_selector("Search or type web address")
+
+
 class DenyButton(BaseButton):
     def __init__(self, driver):
         super(DenyButton, self).__init__(driver)
         self.locator = self.Locator.xpath_selector("//*[@text='Deny' or @text='DENY']")
 
+class CancelButton(BaseButton):
+    def __init__(self, driver):
+        super(CancelButton, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector("//*[@text='Cancel' or @text='CANCEL']")
 
 class DeleteButton(BaseButton):
     def __init__(self, driver):
@@ -71,7 +80,7 @@ class NoButton(BaseButton):
 class OkButton(BaseButton):
     def __init__(self, driver):
         super(OkButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='OK']")
+        self.locator = self.Locator.xpath_selector("//*[@text='OK'or @text='Ok']")
 
 
 class ContinueButton(BaseButton):
@@ -92,6 +101,15 @@ class TabButton(BaseButton):
 
         return Counter(self.driver, self.locator.value)
 
+    @property
+    def public_unread_messages(self):
+        class PublicChatUnreadMessages(BaseElement):
+            def __init__(self, driver):
+                super(PublicChatUnreadMessages, self).__init__(driver)
+                self.locator = self.Locator.accessibility_id('public-unread-badge')
+
+        return PublicChatUnreadMessages(self.driver)
+
 
 class HomeButton(TabButton):
     def __init__(self, driver):
@@ -106,6 +124,12 @@ class HomeButton(TabButton):
         from views.home_view import PlusButton
         self.click_until_presence_of_element(PlusButton(self.driver))
         return self.navigate()
+
+class ShareButton(BaseButton):
+
+    def __init__(self, driver):
+        super(ShareButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('share-my-contact-code-button')
 
 
 class DappTabButton(TabButton):
@@ -149,8 +173,8 @@ class ProfileButton(TabButton):
         return ProfileView(self.driver)
 
     def click(self):
-        from views.profile_view import DefaultUserNameText
-        self.click_until_presence_of_element(DefaultUserNameText(self.driver))
+        from views.profile_view import PrivacyAndSecurityButton
+        self.click_until_presence_of_element(PrivacyAndSecurityButton(self.driver))
         return self.navigate()
 
 
@@ -228,7 +252,7 @@ class DiscardButton(BaseButton):
 class ConfirmButton(BaseButton):
     def __init__(self, driver):
         super(ConfirmButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='CONFIRM']")
+        self.locator = self.Locator.xpath_selector("//*[@text='CONFIRM' or @text='Confirm']")
 
 
 class ProgressBar(BaseElement):
@@ -241,6 +265,18 @@ class CrossIcon(BaseButton):
     def __init__(self, driver):
         super(CrossIcon, self).__init__(driver)
         self.locator = self.Locator.xpath_selector('(//android.view.ViewGroup[@content-desc="icon"])[1]')
+
+
+class NativeCloseButton(BaseButton):
+    def __init__(self, driver):
+        super(NativeCloseButton, self).__init__(driver)
+        self.locator = self.Locator.id('android:id/aerr_close')
+
+
+class CrossIconInWelcomeScreen(BaseButton):
+    def __init__(self, driver):
+        super(CrossIconInWelcomeScreen, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('hide-home-button')
 
 
 class ShowRoots(BaseButton):
@@ -261,7 +297,7 @@ class AssetButton(BaseButton):
     def __init__(self, driver, asset_name):
         super(AssetButton, self).__init__(driver)
         self.asset_name = asset_name
-        self.locator = self.Locator.text_selector(self.asset_name)
+        self.locator = self.Locator.xpath_selector('(//*[@content-desc=":' + self.asset_name + '-asset-value"])[1]')
 
     @property
     def name(self):
@@ -279,14 +315,26 @@ class OpenInStatusButton(BaseButton):
 
     def click(self):
         self.wait_for_visibility_of_element()
+        # using sleep is wrong, but implicit wait for element can't help in particular case
+        time.sleep(3)
         self.swipe_to_web_element()
         self.wait_for_element().click()
+
+class StatusInBackgroundButton(BaseButton):
+    def __init__(self, driver):
+        super(StatusInBackgroundButton, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector('//*[contains(@content-desc,"Status")]')
+
+class EnterQRcodeEditBox(BaseEditBox):
+    def __init__(self, driver):
+        super(EnterQRcodeEditBox, self).__init__(driver)
+        self.locator = self.Locator.text_selector('Message')
 
 
 class OkGotItButton(BaseButton):
     def __init__(self,driver):
         super(OkGotItButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='OK, got it']")
+        self.locator = self.Locator.xpath_selector("//*[@text='Okay, got it']")
 
     def click(self):
         self.wait_for_element().click()
@@ -302,7 +350,13 @@ class AirplaneModeButton(BaseButton):
         action = TouchAction(self.driver)
         action.press(None, 50, 0).move_to(None, 50, 300).perform()
         super(AirplaneModeButton, self).click()
-        action.tap(None, 50, 600).perform()
+        self.driver.press_keycode(4)
+
+
+class SearchChatInput(BaseEditBox):
+    def __init__(self, driver):
+        super().__init__(driver)
+        self.locator = self.Locator.text_selector('Search')
 
 
 class BaseView(object):
@@ -331,18 +385,26 @@ class BaseView(object):
         self.confirm_button = ConfirmButton(self.driver)
         self.connection_status = ConnectionStatusText(self.driver)
         self.cross_icon = CrossIcon(self.driver)
+        self.native_close_button = NativeCloseButton(self.driver)
         self.show_roots_button = ShowRoots(self.driver)
         self.get_started_button = GetStartedButton(self.driver)
         self.ok_got_it_button = OkGotItButton(self.driver)
         self.progress_bar = ProgressBar(self.driver)
+        self.cross_icon_iside_welcome_screen_button = CrossIconInWelcomeScreen(self.driver)
+        self.status_in_background_button = StatusInBackgroundButton(self.driver)
+        self.cancel_button = CancelButton(self.driver)
+        self.search_chat_input = SearchChatInput(self.driver)
+        self.share_button = ShareButton(self.driver)
 
         # external browser
+        self.search_in_google_edit_box = SearchEditBox(self.driver)
         self.open_in_status_button = OpenInStatusButton(self.driver)
 
         self.apps_button = AppsButton(self.driver)
         self.status_app_icon = StatusAppIcon(self.driver)
 
         self.airplane_mode_button = AirplaneModeButton(self.driver)
+        self.enter_qr_edit_box = EnterQRcodeEditBox(self.driver)
 
         self.element_types = {
             'base': BaseElement,
@@ -353,7 +415,9 @@ class BaseView(object):
 
     def accept_agreements(self):
         iterations = int()
-        while iterations <= 2 and (self.ok_button.is_element_displayed(2) or
+        self.close_native_device_dialog("Messages")
+        self.close_native_device_dialog("YouTube")
+        while iterations <= 1 and (self.ok_button.is_element_displayed(2) or
                                    self.continue_button.is_element_displayed(2)):
             for button in self.ok_button, self.continue_button:
                 try:
@@ -363,11 +427,29 @@ class BaseView(object):
                     pass
             iterations += 1
 
+    def rooted_device_continue(self):
+        try:
+            self.continue_button.wait_for_element(3)
+            self.continue_button.click()
+        except (NoSuchElementException, TimeoutException):
+            pass
+
+    def close_native_device_dialog(self, alert_text_part):
+        element = self.element_by_text_part(alert_text_part)
+        if element.is_element_present(1):
+            self.driver.info("Closing '%s' alert..." % alert_text_part)
+            self.dismiss_alert()
+
+    def dismiss_alert(self):
+        self.native_close_button.click()
+        self.driver.info("Alert closed")
+
+
     @property
     def logcat(self):
         logcat = self.driver.get_log("logcat")
         if len(logcat) > 1000:
-            return str([i for i in logcat if 'appium' not in str(i).lower()])
+            return str([i for i in logcat if not ('appium' in str(i).lower() or ':1.000000.' in str(i).lower())])
         raise TimeoutError('Logcat is empty')
 
     def confirm(self):
@@ -389,9 +471,14 @@ class BaseView(object):
         self.driver.info('=========================================================================')
         self.driver.info(string)
 
-    def click_system_back_button(self):
+    def click_system_back_button(self, times=1):
         self.driver.info('Click system back button')
-        self.driver.press_keycode(4)
+        for _ in range(times):
+            self.driver.press_keycode(4)
+
+    def click_system_home_button(self):
+        self.driver.info('Press system Home button')
+        self.driver.press_keycode(3)
 
     def cut_text(self):
         self.driver.info('Cut text')
@@ -526,7 +613,7 @@ class BaseView(object):
         return '0.00%s' % datetime.now().strftime('%-d%-H%-M%-S').strip('0')
 
     @staticmethod
-    def get_public_chat_name():
+    def get_random_chat_name():
         return ''.join(random.choice(string.ascii_lowercase) for _ in range(7))
 
     def get_text_from_qr(self):
@@ -541,16 +628,16 @@ class BaseView(object):
         raw_public_key = bytearray.fromhex(public_key.replace('0x04', ''))
         return datatypes.PublicKey(raw_public_key).to_address()[2:]
 
-    def get_back_to_home_view(self):
+    def get_back_to_home_view(self, times_to_click_on_back_btn=5):
         counter = 0
-        from views.home_view import PlusButton
-        while not PlusButton(self.driver).is_element_displayed(2):
+        while BackButton(self.driver).is_element_displayed(2):
             try:
-                if counter >= 5:
+                if counter >= times_to_click_on_back_btn:
                     break
                 self.back_button.click()
-            except (NoSuchElementException, TimeoutException):
                 counter += 1
+            except (NoSuchElementException, TimeoutException):
+                continue
         return self.home_button.click()
 
     def relogin(self, password=common_password):
@@ -563,22 +650,29 @@ class BaseView(object):
         sign_in_view = self.get_sign_in_view()
         sign_in_view.sign_in(password)
 
-    def close_share_chat_key_popup(self):
+    def close_share_popup(self):
         TouchAction(self.driver).tap(None, 255, 104, 1).perform()
 
-    def get_public_key(self):
+    def get_public_key_and_username(self, return_username=False):
         profile_view = self.profile_button.click()
+        default_username = profile_view.default_username_text.text
         profile_view.share_my_profile_button.click()
         profile_view.public_key_text.wait_for_visibility_of_element()
         public_key = profile_view.public_key_text.text
-        self.close_share_chat_key_popup()
-        return public_key
+        self.close_share_popup()
+        user_data = (public_key, default_username) if return_username else public_key
+        return user_data
 
     def share_via_messenger(self):
+        self.element_by_text_part("Direct share").wait_for_element()
         self.element_by_text('Messages').click()
-        self.element_by_text('NEW MESSAGE').click()
+        self.element_by_text('New message').click()
         self.send_as_keyevent('+0100100101')
         self.confirm()
+
+    def click_upon_push_notification_by_text(self, text):
+        self.element_by_text_part(text).click()
+        return self.get_chat_view()
 
     def reconnect(self):
         connect_status = self.connection_status
@@ -600,22 +694,25 @@ class BaseView(object):
         logcat = self.logcat
         items_in_logcat = list()
         for key, value in kwargs.items():
-            if re.findall('\W%s$|\W%s\W' % (value, value), logcat):
+            if re.findall(r'\W%s$|\W%s\W' % (value, value), logcat):
                 items_in_logcat.append('%s in logcat!!!' % key.capitalize())
         return items_in_logcat
 
     def asset_by_name(self, asset_name):
         return AssetButton(self.driver, asset_name)
 
+    def open_notification_bar(self):
+        action = TouchAction(self.driver)
+        for i in range(2):
+            action.press(None, 100, 10).move_to(None, 100, 600).perform()
+
     def toggle_airplane_mode(self):
         self.airplane_mode_button.click()
-        mms_service = self.element_by_text_part("MmsService")
-        if mms_service.is_element_displayed():
-            self.driver.switch_to.alert().dismiss()
+        self.close_native_device_dialog("MmsService")
 
     def toggle_mobile_data(self):
         self.driver.start_activity(app_package='com.android.settings', app_activity='.Settings')
-        network_and_internet = self.element_by_text('Network & Internet')
+        network_and_internet = self.element_by_text('Network & internet')
         network_and_internet.wait_for_visibility_of_element()
         network_and_internet.click()
         toggle = self.element_by_accessibility_id('Wi‑Fi')
@@ -624,10 +721,22 @@ class BaseView(object):
         self.driver.back()
         self.driver.back()
 
-
     def open_universal_web_link(self, deep_link):
         start_web_browser(self.driver)
-        self.send_as_keyevent(deep_link)
-        self.confirm()
-        self.open_in_status_button.click()
+        self.driver.get(deep_link)
+
+    def upgrade_app(self):
+        self.driver.install_app(pytest_config_global['apk_upgrade'], replace=True)
+        self.driver.info('Upgrading apk to apk_upgrade')
+
+    def search_by_keyword(self, keyword):
+        self.driver.info('Search for %s' % keyword)
+        self.search_chat_input.click()
+        self.search_chat_input.send_keys(keyword)
+
+    # Method-helper
+    def write_page_source_to_file(self, full_path_to_file):
+        string_source = self.driver.page_source
+        source = open(full_path_to_file, "a+")
+        source.write(string_source)
 

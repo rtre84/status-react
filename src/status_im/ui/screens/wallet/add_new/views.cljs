@@ -1,71 +1,201 @@
 (ns status-im.ui.screens.wallet.add-new.views
   (:require-macros [status-im.utils.views :refer [defview letsubs]])
   (:require [status-im.ui.components.react :as react]
-            [status-im.ui.components.status-bar.view :as status-bar]
-            [status-im.ui.components.toolbar.view :as toolbar]
+            [status-im.ui.screens.keycard.pin.views :as pin.views]
             [status-im.i18n :as i18n]
             [re-frame.core :as re-frame]
             [status-im.ui.components.colors :as colors]
-            [status-im.ui.components.list-item.views :as list-item]
-            [status-im.ui.components.common.common :as components.common]
             [reagent.core :as reagent]
             [cljs.spec.alpha :as spec]
-            [status-im.multiaccounts.db :as multiaccounts.db]))
+            [status-im.multiaccounts.db :as multiaccounts.db]
+            [status-im.ui.components.toolbar :as toolbar]
+            [status-im.ui.components.topbar :as topbar]
+            [status-im.utils.utils :as utils.utils]
+            [status-im.ui.components.icons.vector-icons :as icons]
+            [status-im.ui.screens.wallet.account-settings.views :as account-settings]
+            [status-im.ethereum.core :as ethereum]
+            [status-im.utils.security :as security]
+            [clojure.string :as string]
+            [quo.core :as quo]
+            [status-im.ui.components.bottom-panel.views :as bottom-panel]))
 
-(defn add-account []
-  [react/view {:flex 1}
-   [status-bar/status-bar]
-   [toolbar/toolbar {:transparent? true} toolbar/default-nav-back nil]
-   [react/scroll-view {:keyboard-should-persist-taps :handled
-                       :style                        {:flex 1}}
-    [react/view {:align-items :center :padding-horizontal 40}
-     [react/text {:style {:typography :header :margin-top 16}} (i18n/label :t/add-an-account)]
-     [react/text {:style {:color colors/gray :text-align :center :margin-top 16 :line-height 22}}
-      (i18n/label :t/add-account-description)]]
-    [react/view {:height 52}]
-    [list-item/list-item
-     {:type  :section-header
-      :title :t/default}]
-    [list-item/list-item
-     {:title       :t/generate-a-new-account
-      :theme       :action
-      :icon        :main-icons/add
-      :accessories [:chevron]
-      :on-press
-      #(re-frame/dispatch
-        [:navigate-to :add-new-account-password])}]]])
+(defn- request-camera-permissions []
+  (let [options {:handler :wallet.add-new/qr-scanner-result}]
+    (re-frame/dispatch
+     [:request-permissions
+      {:permissions [:camera]
+       :on-allowed
+       #(re-frame/dispatch [:wallet.add-new/qr-scanner-allowed options])
+       :on-denied
+       #(utils.utils/set-timeout
+         (fn []
+           (utils.utils/show-popup (i18n/label :t/error)
+                                   (i18n/label :t/camera-access-error)))
+         50)}])))
 
-(defview password []
-  (letsubs [{:keys [error]} [:generate-account]
-            entered-password (reagent/atom "")]
+(defn add-account-topbar [type]
+  (let [title (case type
+                :generate :t/generate-an-account
+                :watch :t/add-watch-account
+                :seed :t/add-seed-account
+                :key :t/add-private-key-account
+                "")]
+    [topbar/topbar
+     (merge {:title title}
+            (when (= type :watch)
+              {:accessories [{:icon    :qr
+                              :handler #(request-camera-permissions)}]}))]))
+
+(defn common-settings [account]
+  [react/view {:margin-horizontal 16}
+   [quo/text-input
+    {:label               (i18n/label :t/account-name)
+     :auto-focus          false
+     :default-value       (:name account)
+     :accessibility-label :enter-account-name
+     :placeholder         (i18n/label :t/account-name)
+     :on-change-text      #(re-frame/dispatch [:set-in [:add-account :account :name] %])}]
+   [react/text {:style {:margin-top 30}} (i18n/label :t/account-color)]
+   [react/touchable-highlight
+    {:on-press #(re-frame/dispatch
+                 [:show-popover
+                  {:view  [account-settings/colors-popover (:color account)
+                           (fn [new-color]
+                             (re-frame/dispatch [:set-in [:add-account :account :color] new-color])
+                             (re-frame/dispatch [:hide-popover]))]
+                   :style {:max-height "60%"}}])}
+    [react/view {:height      52        :margin-top      12      :background-color (:color account) :border-radius 8
+                 :align-items :flex-end :justify-content :center :padding-right    12}
+     [icons/icon :main-icons/dropdown {:color colors/white}]]]])
+
+(defn settings [{:keys [type scanned-address password-error account-error]}
+                entered-password]
+  [react/view {:padding-horizontal 16
+               :padding-vertical   16}
+   (if (= type :watch)
+     [quo/text-input
+      {:label               (i18n/label :t/wallet-key-title)
+       :auto-focus          false
+       :default-value       scanned-address
+       :placeholder         (i18n/label :t/enter-address)
+       :accessibility-label :add-account-enter-watch-address
+       :on-change-text      #(re-frame/dispatch [:set-in [:add-account :address] %])}]
+     [quo/text-input
+      {:label               (i18n/label :t/password)
+       :show-cancel         false
+       :auto-focus          false
+       :placeholder         (i18n/label :t/enter-your-password)
+       :secure-text-entry   true
+       :text-content-type   :none
+       :accessibility-label :add-account-enter-password
+       :bottom-value        0
+       :error               (when password-error (i18n/label :t/add-account-incorrect-password))
+       :on-change-text      #(do
+                               (re-frame/dispatch [:set-in [:add-account :password-error] nil])
+                               (reset! entered-password %))}])
+   (when (= type :seed)
+     [react/view {:padding-top 16}
+      [quo/text-input
+       {:label               (i18n/label :t/recovery-phrase)
+        :auto-focus          false
+        :placeholder         (i18n/label :t/multiaccounts-recover-enter-phrase-title)
+        :auto-correct        false
+        :keyboard-type       "visible-password"
+        :multiline           true
+        :height              95
+        :error               account-error
+        :accessibility-label :add-account-enter-seed
+        :on-change-text
+        #(do
+           (re-frame/dispatch [:set-in [:add-account :account-error] nil])
+           (re-frame/dispatch [:set-in [:add-account :seed] (security/mask-data (string/lower-case %))]))}]])
+   (when (= type :key)
+     [react/view {:margin-top 30}
+      [quo/text-input
+       {:label               (i18n/label :t/private-key)
+        :auto-focus          false
+        :placeholder         (i18n/label :t/enter-a-private-key)
+        :auto-correct        false
+        :keyboard-type       "visible-password"
+        :error               account-error
+        :secure-text-entry   true
+        :accessibility-label :add-account-enter-private-key
+        :text-content-type   :none
+        :on-change-text
+        #(do
+           (re-frame/dispatch [:set-in [:add-account :account-error] nil])
+           (re-frame/dispatch [:set-in [:add-account :private-key] (security/mask-data %)]))}]])])
+
+(defview pin []
+  (letsubs [pin           [:keycard/pin]
+            status        [:keycard/pin-status]
+            error-label   [:keycard/pin-error-label]
+            retry-counter [:keycard/retry-counter]]
     [react/keyboard-avoiding-view {:style {:flex 1}}
-     [status-bar/status-bar {:flat? true}]
-     [toolbar/toolbar {:transparent? true} toolbar/default-nav-back nil]
-     [react/view {:flex 1}
-      [react/view {:style {:flex            1
-                           :justify-content :space-between
-                           :align-items     :center :margin-horizontal 16}}
-       [react/text {:style {:typography :header :margin-top 16}} (i18n/label :t/enter-your-password)]
-       [react/view {:style {:justify-content :center :flex 1}}
-        [react/text-input {:secure-text-entry true
-                           :auto-focus        true
-                           :text-align        :center
-                           :placeholder       ""
-                           :style             {:typography :header}
-                           :on-change-text    #(reset! entered-password %)}]
-        (when error
-          [react/text {:style {:text-align :center :color colors/red :margin-top 76}} error])]
-       [react/text {:style {:color colors/gray :text-align :center :margin-bottom 16}}
-        (i18n/label :t/to-encrypt-enter-password)]]
-      [react/view {:style {:flex-direction   :row
-                           :justify-content  :flex-end
-                           :align-self       :stretch
-                           :padding-vertical 16
-                           :border-top-width 1
-                           :border-top-color colors/gray-lighter
-                           :padding-right    12}}
-       [components.common/bottom-button {:label     (i18n/label :t/generate-account)
-                                         :on-press  #(re-frame/dispatch
-                                                      [:wallet.accounts/generate-new-account @entered-password])
-                                         :disabled? (not (spec/valid? ::multiaccounts.db/password @entered-password))
-                                         :forward?  true}]]]]))
+     [topbar/topbar
+      {:navigation :none
+       :accessories
+       [{:label   :t/cancel
+         :handler #(re-frame/dispatch [:keycard/new-account-pin-sheet-hide])}]}]
+     [pin.views/pin-view
+      {:pin               pin
+       :status            status
+       :retry-counter     retry-counter
+       :title-label       :t/current-pin
+       :description-label :t/current-pin-description
+       :error-label       error-label
+       :step              :export-key}]]))
+
+(defn pin-sheet []
+  (let [show-sheet? @(re-frame/subscribe [:keycard/new-account-sheet?])
+        {window-height :height} @(re-frame/subscribe [:dimensions/window])]
+    [bottom-panel/bottom-panel
+     show-sheet?
+     (fn [_]
+       [react/view {:style
+                    {:background-color        colors/white
+                     :border-top-right-radius 16
+                     :border-top-left-radius  16
+                     :padding-bottom          40
+                     :flex 1}}
+        [pin]])
+     window-height]))
+
+(defview add-account []
+  (letsubs [{:keys [type account] :as add-account} [:add-account]
+            add-account-disabled? [:add-account-disabled?]
+            entered-password      (reagent/atom "")
+            keycard?              [:keycard-multiaccount?]]
+    [react/keyboard-avoiding-view {:style {:flex 1}}
+     [add-account-topbar type]
+     [react/scroll-view {:keyboard-should-persist-taps :handled
+                         :style                        {:flex 1}}
+      (when (or (not keycard?)
+                (= type :watch))
+        [settings add-account entered-password])
+      [common-settings account]]
+     [toolbar/toolbar
+      {:show-border? true
+       :right
+       [quo/button
+        {:type                :secondary
+         :after               :main-icon/next
+         :accessibility-label :add-account-add-account-button
+         :on-press
+         (if (and keycard?
+                  (not= type :watch))
+           #(re-frame/dispatch [:keycard/new-account-pin-sheet
+                                {:view {:content pin
+                                        :height  256}}])
+           #(re-frame/dispatch [:wallet.accounts/add-new-account
+                                (ethereum/sha3 @entered-password)]))
+         :disabled
+         (or add-account-disabled?
+             (and
+              (not (= type :watch))
+              (and
+               (not keycard?)
+               (not (spec/valid? ::multiaccounts.db/password
+                                 @entered-password)))))}
+        (i18n/label :t/add-account)]}]
+     [pin-sheet]]))

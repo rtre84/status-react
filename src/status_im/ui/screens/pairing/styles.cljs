@@ -1,26 +1,18 @@
 (ns status-im.ui.screens.pairing.styles
   (:require [status-im.ui.components.colors :as colors]
-            [status-im.ui.components.styles :as components.styles]
             [status-im.utils.styles :as styles]))
 
 (def wrapper
-  {:flex             1
-   :background-color :white})
-
-(def installation-item-inner
-  {:flex           1
-   :flex-direction :row})
+  {:flex             1})
 
 (styles/def installation-item
   {:flex-direction   :row
-   :background-color :white
    :align-items      :center
    :ios              {:height 64}
    :android          {:height 56}})
 
 (def installation-list
-  {:background-color   :white
-   :padding-horizontal 16
+  {:padding-horizontal 16
    :flex               1})
 
 (def edit-installation
@@ -37,8 +29,7 @@
 (def pair-this-device
   {:height             80
    :padding-horizontal 16
-   :padding-top        12
-   :background-color   :white})
+   :padding-top        12})
 
 (def info-section
   {:padding-horizontal 16
@@ -61,9 +52,6 @@
    :align-items      :center
    :justify-content  :center})
 
-(def installation-status
-  {:color colors/gray})
-
 (def pairing-actions-text
   {:flex        1
    :margin-left 16})
@@ -76,8 +64,7 @@
   (let [color (if enabled?
                 colors/blue
                 colors/gray)]
-    {:desktop {:tint-color color}
-     :ios     {:color color}
+    {:ios     {:color color}
      :android {:color color}}))
 
 (def paired-devices-title
@@ -88,15 +75,3 @@
   {:flex-direction    :row
    :margin-horizontal 12
    :margin-vertical   15})
-
-(def input-container
-  {:flex-direction    :row
-   :align-items       :center
-   :justify-content   :space-between
-   :border-radius     components.styles/border-radius
-   :height            52
-   :margin-top        15})
-
-(styles/def input
-  {:flex    1
-   :android {:padding 0}})

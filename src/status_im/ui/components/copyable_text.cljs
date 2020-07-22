@@ -3,8 +3,7 @@
             [status-im.i18n :as i18n]
             [status-im.ui.components.animation :as animation]
             [status-im.ui.components.colors :as colors]
-            [status-im.ui.components.react :as react]
-            [status-im.ui.components.typography :as typography]))
+            [status-im.ui.components.react :as react]))
 
 (defn hide-cue-atom [anim-opacity anim-y cue-atom]
   (animation/start
@@ -14,14 +13,14 @@
       {:toValue         0
        :duration        140
        :delay           1000
-       :easing          (.-ease (animation/easing))
+       :easing          (.-ease ^js animation/easing)
        :useNativeDriver true})
      (animation/timing
       anim-y
       {:toValue         0
        :duration        140
        :delay           1000
-       :easing          (.-ease (animation/easing))
+       :easing          (.-ease ^js animation/easing)
        :useNativeDriver true})])
    #(reset! cue-atom false)))
 
@@ -33,13 +32,13 @@
         anim-opacity
         {:toValue         1
          :duration        140
-         :easing          (.-ease (animation/easing))
+         :easing          (.-ease ^js animation/easing)
          :useNativeDriver true})
        (animation/timing
         anim-y
         {:toValue         y
          :duration        140
-         :easing          (.-ease (animation/easing))
+         :easing          (.-ease ^js animation/easing)
          :useNativeDriver true})])
      #(hide-cue-atom anim-opacity anim-y cue-atom))))
 
@@ -79,8 +78,8 @@
        :font-size   14}}
      (i18n/label :sharing-copied-to-clipboard)]]])
 
-(defn copyable-text-view [{:keys [label copied-text container-style]}
-                          content]
+(defn copyable-text-view
+  [{:keys [label container-style]} content]
   (let [cue-atom     (reagent/atom false)
         width        (reagent/atom 0)
         height       (reagent/atom 0)
@@ -89,36 +88,37 @@
     (reagent/create-class
      {:reagent-render
       (fn [{:keys [copied-text]} _]
-        [react/view
-         {:style (if container-style container-style {})
-          :on-layout
-          #(do
-             (reset! width (-> % .-nativeEvent .-layout .-width))
-             (reset! height (-> % .-nativeEvent .-layout .-height)))}
-         (when label
-           [react/text
-            {:style
-             {:font-size     13
-              ;; line height specified here because of figma spec
-              :line-height   18
-              :font-weight   "500"
-              :color         colors/gray
-              :margin-bottom 4}}
-            (i18n/label label)])
-         [copy-action-visual-cue anim-opacity anim-y width cue-atom]
-         [react/touchable-highlight
-          {:active-opacity (if @cue-atom 1 0.85)
-           :underlay-color colors/black
-           :on-press
-           #(when (not @cue-atom)
-              (reset! cue-atom true)
-              (show-cue-atom
-               anim-opacity
-               anim-y
-               cue-atom
-               (if (> @height 34)
-                 (- (/ @height 2))
-                 (- (+ 17 @height))))
-              (react/copy-to-clipboard copied-text))}
-          [react/view {:background-color colors/white}
-           content]]])})))
+        (let [copy-fn #(when (not @cue-atom)
+                         (reset! cue-atom true)
+                         (show-cue-atom
+                          anim-opacity
+                          anim-y
+                          cue-atom
+                          (if (> @height 34)
+                            (- (/ @height 2))
+                            (- (+ 17 @height))))
+                         (react/copy-to-clipboard copied-text))]
+          [react/view
+           {:style (if container-style container-style {})
+            :on-layout
+            #(do
+               (reset! width (-> ^js % .-nativeEvent .-layout .-width))
+               (reset! height (-> ^js % .-nativeEvent .-layout .-height)))}
+           (when label
+             [react/text
+              {:style
+               {:font-size     13
+                ;; line height specified here because of figma spec
+                :line-height   18
+                :font-weight   "500"
+                :color         colors/gray
+                :margin-bottom 4}}
+              (i18n/label label)])
+           [copy-action-visual-cue anim-opacity anim-y width cue-atom]
+           [react/touchable-highlight
+            {:active-opacity (if @cue-atom 1 0.85)
+             :underlay-color colors/black
+             :on-press       copy-fn
+             :on-long-press  copy-fn}
+            [react/view {:background-color colors/white}
+             content]]]))})))

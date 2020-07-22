@@ -38,35 +38,6 @@ class TestDApps(SingleDeviceTestCase):
         if not status_test_dapp.element_by_text(user['public_key']).is_element_displayed():
             self.driver.fail('Public key is not returned')
 
-    @marks.testrail_id(6234)
-    @marks.high
-    def test_always_allow_web3_permissions(self):
-        user = basic_user
-        sign_in_view = SignInView(self.driver)
-        sign_in_view.recover_access(passphrase=user['passphrase'])
-        dapp_view = sign_in_view.dapp_tab_button.click()
-
-        dapp_view.just_fyi('check that web3 permissions window is shown')
-        if not dapp_view.element_by_text_part('ÐApps can access my wallet').is_element_displayed():
-            self.errors.append('Permissions window is not shown!')
-
-        dapp_view.just_fyi('check that can enable "Always allow" and Dapp will not ask for permissions')
-        dapp_view.always_allow_radio_button.click()
-        dapp_view.close_web3_permissions_window_button.click()
-        dapp_view.open_url(test_dapp_url)
-        status_test_dapp = dapp_view.get_status_test_dapp_view()
-        if status_test_dapp.allow_button.is_element_displayed():
-            self.driver.append('DApp is asking permissions (Always allow is enabled)')
-
-        dapp_view.just_fyi('check that after relogin window is not reappearing and DApps are still not asking for permissions')
-        sign_in_view.relogin()
-        sign_in_view.dapp_tab_button.click()
-        dapp_view.open_url(test_dapp_url)
-        if status_test_dapp.allow_button.is_element_displayed():
-            self.driver.append('DApp is asking permissions after relogin (Always allow is enabled)')
-        self.verify_no_errors()
-
-
     @marks.testrail_id(6232)
     @marks.medium
     def test_switching_accounts_in_dapp(self):
@@ -77,7 +48,7 @@ class TestDApps(SingleDeviceTestCase):
         wallet_view.just_fyi('create new account in multiaccount')
         wallet_view.set_up_wallet()
         status_account = 'Status account'
-        account_name = 'subaccount'
+        account_name = 'Subaccount'
         wallet_view.add_account(account_name)
         address = wallet_view.get_wallet_address(account_name)
 
@@ -107,7 +78,6 @@ class TestDApps(SingleDeviceTestCase):
         if not status_test_dapp.element_by_text(account_name).is_element_displayed():
             self.errors.append("No expected account %s is shown in authorize web3 popup for wallet" % account_name)
         status_test_dapp.allow_button.click()
-        status_test_dapp.allow_button.click()
         dapp_view.profile_button.click()
         profile_view.element_by_text(test_dapp_name).click()
         for text in 'Chat key', account_name:
@@ -118,10 +88,22 @@ class TestDApps(SingleDeviceTestCase):
         profile_view.dapp_tab_button.click()
         status_test_dapp.assets_button.click()
         send_transaction_view = status_test_dapp.request_stt_button.click()
+        address = send_transaction_view.get_formatted_recipient_address(address)
         if not send_transaction_view.element_by_text(address).is_element_displayed():
             self.errors.append("Wallet address %s in not shown in 'From' on Send Transaction screen" % address)
 
-        self.verify_no_errors()
+        sign_in_view.just_fyi('Relogin and check multiaccount loads fine')
+        send_transaction_view.cancel_button.click()
+        sign_in_view.profile_button.click()
+        sign_in_view.get_back_to_home_view()
+        sign_in_view.relogin()
+        sign_in_view.wallet_button.click()
+        if not wallet_view.element_by_text(account_name).is_element_displayed():
+            self.errors.append("Subaccount is gone after relogin in Wallet!")
+        sign_in_view.dapp_tab_button.click()
+        if not dapp_view.element_by_text(account_name).is_element_displayed():
+            self.errors.append("Subaccount is not selected after relogin in Dapps!")
+        self.errors.verify_no_errors()
 
     @marks.testrail_id(5654)
     @marks.low
@@ -129,7 +111,7 @@ class TestDApps(SingleDeviceTestCase):
         user = basic_user
         sign_in_view = SignInView(self.driver)
         home_view = sign_in_view.recover_access(passphrase=user['passphrase'])
-        chat = home_view.join_public_chat(home_view.get_public_chat_name())
+        chat = home_view.join_public_chat(home_view.get_random_chat_name())
         chat.back_button.click()
         status_test_dapp = home_view.open_status_test_dapp()
         status_test_dapp.wait_for_d_aap_to_load()

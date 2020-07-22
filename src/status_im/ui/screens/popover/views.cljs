@@ -4,11 +4,16 @@
             [reagent.core :as reagent]
             [status-im.ui.components.react :as react]
             [re-frame.core :as re-frame]
+            [status-im.utils.platform :as platform]
             [status-im.ui.screens.wallet.signing-phrase.views :as signing-phrase]
             [status-im.ui.screens.wallet.request.views :as request]
             [status-im.ui.screens.profile.user.views :as profile.user]
+            ["react-native" :refer (BackHandler)]
             [status-im.ui.screens.multiaccounts.recover.views :as multiaccounts.recover]
-            [status-im.ui.screens.biometric.views :as biometric]))
+            [status-im.ui.screens.signing.views :as signing]
+            [status-im.ui.screens.biometric.views :as biometric]
+            [status-im.ui.components.colors :as colors]
+            [status-im.ui.screens.keycard.frozen-card.view :as frozen-card]))
 
 (defn hide-panel-anim
   [bottom-anim-value alpha-value window-height]
@@ -30,12 +35,35 @@
                                :duration        500
                                :useNativeDriver true})])))
 
-(defn popover-view [popover window-height]
+(defn popover-view [_ window-height]
   (let [bottom-anim-value (anim/create-value window-height)
         alpha-value       (anim/create-value 0)
         clear-timeout     (atom nil)
         current-popover   (reagent/atom nil)
-        update?           (reagent/atom nil)]
+        update?           (reagent/atom nil)
+        request-close     (fn []
+                            (when-not (:prevent-closing? @current-popover)
+                              (reset! clear-timeout
+                                      (js/setTimeout
+                                       #(do (reset! current-popover nil)
+                                            (re-frame/dispatch [:hide-popover])) 200))
+                              (hide-panel-anim
+                               bottom-anim-value alpha-value (- window-height)))
+                            true)
+        on-show           (fn []
+                            (show-panel-anim bottom-anim-value alpha-value)
+                            (when platform/android?
+                              (.removeEventListener BackHandler
+                                                    "hardwareBackPress"
+                                                    request-close)
+                              (.addEventListener BackHandler
+                                                 "hardwareBackPress"
+                                                 request-close)))
+        on-hide           (fn []
+                            (when platform/android?
+                              (.removeEventListener BackHandler
+                                                    "hardwareBackPress"
+                                                    request-close)))]
     (reagent/create-class
      {:component-will-update
       (fn [_ [_ popover _]]
@@ -43,7 +71,7 @@
         (cond
           @update?
           (do (reset! update? false)
-              (show-panel-anim bottom-anim-value alpha-value))
+              (on-show))
 
           (and @current-popover popover)
           (do (reset! update? true)
@@ -52,17 +80,19 @@
 
           popover
           (do (reset! current-popover popover)
-              (show-panel-anim bottom-anim-value alpha-value))
+              (on-show))
 
           :else
-          (reset! current-popover nil)))
+          (do (reset! current-popover nil)
+              (on-hide))))
+      :component-will-unmount on-hide
       :reagent-render
       (fn []
         (when @current-popover
           (let [{:keys [view style]} @current-popover]
             [react/view {:position :absolute :top 0 :bottom 0 :left 0 :right 0}
              [react/animated-view
-              {:style {:flex 1 :background-color :black :opacity alpha-value}}]
+              {:style {:flex 1 :background-color colors/black-persist :opacity alpha-value}}]
              [react/animated-view {:style
                                    {:position  :absolute
                                     :height    window-height
@@ -71,14 +101,8 @@
                                     :transform [{:translateY bottom-anim-value}]}}
               [react/touchable-highlight
                {:style    {:flex 1 :align-items :center :justify-content :center}
-                :on-press (fn []
-                            (reset! clear-timeout
-                                    (js/setTimeout
-                                     #(do (reset! current-popover nil)
-                                          (re-frame/dispatch [:hide-popover])) 200))
-                            (hide-panel-anim
-                             bottom-anim-value alpha-value (- window-height)))}
-               [react/view (merge {:background-color :white
+                :on-press request-close}
+               [react/view (merge {:background-color colors/white
                                    :border-radius    16
                                    :margin           32
                                    :shadow-offset    {:width 0 :height 2}
@@ -105,6 +129,18 @@
 
                    (= :enable-biometric view)
                    [biometric/enable-biometric-popover]
+
+                   (= :secure-with-biometric view)
+                   [biometric/secure-with-biometric-popover]
+
+                   (= :disable-password-saving view)
+                   [biometric/disable-password-saving-popover]
+
+                   (= :transaction-data view)
+                   [signing/transaction-data]
+
+                   (= :frozen-card view)
+                   [frozen-card/frozen-card]
 
                    :else
                    [view])]]]]])))})))

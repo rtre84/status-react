@@ -1,20 +1,28 @@
 (ns status-im.signing.gas
-  (:require [status-im.utils.money :as money]
-            [status-im.utils.fx :as fx]
+  (:require [re-frame.core :as re-frame]
+            [status-im.ethereum.json-rpc :as json-rpc]
             [status-im.i18n :as i18n]
             [status-im.ui.components.bottom-sheet.core :as bottom-sheet]
-            [re-frame.core :as re-frame]
-            [status-im.ethereum.json-rpc :as json-rpc]))
+            [status-im.utils.fx :as fx]
+            [status-im.utils.money :as money]))
 
-(def min-gas-price-wei (money/bignumber 1))
+(def min-gas-price-wei ^js (money/bignumber 1))
+
+(def min-gas-units ^js (money/bignumber 21000))
 
 (defmulti get-error-label-key (fn [type _] type))
 
 (defmethod get-error-label-key :gasPrice [_ value]
   (cond
     (not value) :t/invalid-number
-    (.lt (money/->wei :gwei value) min-gas-price-wei) :t/wallet-send-min-wei
+    (.lt ^js (money/->wei :gwei value) min-gas-price-wei) :t/wallet-send-min-wei
     (-> (money/->wei :gwei value) .decimalPlaces pos?) :t/invalid-number))
+
+(defmethod get-error-label-key :gas [_ ^js value]
+  (cond
+    (not value) :t/invalid-number
+    (.lt value min-gas-units) :t/wallet-send-min-units
+    (-> value .decimalPlaces pos?) :t/invalid-number))
 
 (defmethod get-error-label-key :default [_ value]
   (when (or (not value)
@@ -22,7 +30,7 @@
     :t/invalid-number))
 
 (defn calculate-max-fee
-  [gas gasPrice]
+  [^js gas ^js gasPrice]
   (if (and gas gasPrice)
     (money/to-fixed (money/wei->ether (.times gas gasPrice)))
     "0"))
@@ -32,11 +40,12 @@
         gas      (get-in edit [:gas :value-number])]
     (assoc edit :max-fee (calculate-max-fee gas gasPrice))))
 
-(defn build-edit [edit-value key value]
+(defn build-edit
   "Takes the previous edit, either :gas or :gas-price and a value as string.
   Wei for gas, and gwei for gas price.
   Validates them and sets max fee"
-  (let [bn-value        (money/bignumber value)
+  [edit-value key value]
+  (let [^js bn-value        (money/bignumber value)
         error-label-key (get-error-label-key key bn-value)
         data            (if error-label-key
                           {:value   value
@@ -58,12 +67,28 @@
 (fx/defn update-estimated-gas-success
   {:events [:signing/update-estimated-gas-success]}
   [{db :db} gas]
-  {:db (assoc-in db [:signing/tx :gas] gas)})
+  {:db (-> db
+           (assoc-in [:signing/tx :gas] gas)
+           (assoc-in [:signing/edit-fee :gas-loading?] false))})
 
 (fx/defn update-gas-price-success
   {:events [:signing/update-gas-price-success]}
   [{db :db} price]
-  {:db (assoc-in db [:signing/tx :gasPrice] price)})
+  {:db (-> db
+           (assoc-in [:signing/tx :gasPrice] price)
+           (assoc-in [:signing/edit-fee :gas-price-loading?] false))})
+
+(fx/defn update-estimated-gas-error
+  {:events [:signing/update-estimated-gas-error]}
+  [{db :db} {:keys [message]}]
+  {:db (-> db
+           (assoc-in [:signing/edit-fee :gas-loading?] false)
+           (assoc-in [:signing/tx :gas-error-message] message))})
+
+(fx/defn update-gas-price-error
+  {:events [:signing/update-gas-price-error]}
+  [{db :db}]
+  {:db (assoc-in db [:signing/edit-fee :gas-price-loading?] false)})
 
 (fx/defn open-fee-sheet
   {:events [:signing.ui/open-fee-sheet]}
@@ -86,15 +111,17 @@
 
 (re-frame/reg-fx
  :signing/update-gas-price
- (fn [{:keys [success-event edit?]}]
+ (fn [{:keys [success-event error-event]}]
    (json-rpc/call
     {:method     "eth_gasPrice"
-     :on-success #(re-frame/dispatch [success-event % edit?])})))
+     :on-success #(re-frame/dispatch [success-event %])
+     :on-error #(re-frame/dispatch [error-event %])})))
 
 (re-frame/reg-fx
  :signing/update-estimated-gas
- (fn [{:keys [obj success-event]}]
+ (fn [{:keys [obj success-event error-event]}]
    (json-rpc/call
     {:method     "eth_estimateGas"
      :params     [obj]
-     :on-success #(re-frame/dispatch [success-event %])})))
+     :on-success #(re-frame/dispatch [success-event %])
+     :on-error #(re-frame/dispatch [error-event %])})))

@@ -1,26 +1,19 @@
 (ns status-im.ui.screens.profile.seed.views
   (:require-macros [status-im.utils.views :refer [defview letsubs]])
   (:require [status-im.ui.components.react :as react]
-            [status-im.ui.components.status-bar.view :as status-bar]
-            [status-im.ui.components.toolbar.view :as toolbar]
+            [status-im.ui.components.toolbar.view :as not.toolbar]
             [status-im.ui.components.toolbar.actions :as actions]
-            [status-im.ui.components.colors :as colors]
-            [status-im.react-native.js-dependencies :as js-dependencies]
             [status-im.react-native.resources :as resources]
-            [status-im.ui.components.common.common :as components.common]
             [re-frame.core :as re-frame]
             [reagent.core :as reagent]
-            [status-im.ui.components.text-input.view :as text-input]
             [status-im.ui.components.icons.vector-icons :as icons]
-            [status-im.ui.components.common.common :as components.common]
             [status-im.ui.components.common.styles :as components.common.styles]
+            [status-im.ui.components.toolbar :as toolbar]
             [clojure.string :as string]
-            [status-im.utils.config :as config]
             [status-im.utils.utils :as utils]
             [status-im.ui.screens.profile.seed.styles :as styles]
             [status-im.i18n :as i18n]
-            [status-im.ui.components.styles :as common.styles]
-            [status-im.utils.platform :as platform]))
+            [quo.core :as quo]))
 
 (def steps-numbers
   {:intro       1
@@ -39,17 +32,16 @@
   [react/scroll-view {:style                   {:padding-horizontal 16}
                       :content-container-style {:align-items     :center
                                                 :justify-content :center}}
-   (when-not platform/desktop?
-     [react/image {:source (resources/get-image :lock)
-                   :style styles/intro-image}])
+   [react/image {:source (resources/get-image :lock)
+                 :style  styles/intro-image}]
    [react/i18n-text {:style styles/intro-text
                      :key   :your-data-belongs-to-you}]
    [react/i18n-text {:style styles/intro-description
                      :key   :your-data-belongs-to-you-description}]
-   [components.common/button
-    {:button-style styles/intro-button
-     :on-press     #(re-frame/dispatch [:set-in [:my-profile/seed :step] :12-words])
-     :label        (i18n/label :t/ok-continue)}]])
+   [react/view {:style styles/intro-button}
+    [quo/button
+     {:on-press #(re-frame/dispatch [:set-in [:my-profile/seed :step] :12-words])}
+     (i18n/label :t/ok-continue)]]])
 
 (defn six-words [words]
   [react/view {:style styles/six-words-container}
@@ -67,33 +59,24 @@
 (defview twelve-words [{:keys [mnemonic]}]
   (letsubs [mnemonic-vec (vec (map-indexed vector (clojure.string/split mnemonic #" ")))
             ref (reagent/atom nil)]
-    [react/view {:style styles/twelve-words-container}
-     [react/text {:style styles/twelve-words-label}
-      (i18n/label :t/your-recovery-phrase)]
-     [react/view {:style styles/twelve-words-columns
-                  :ref (partial reset! ref)}
-      [six-words (subvec mnemonic-vec 0 6)]
-      [react/view {:style styles/twelve-words-columns-separator}]
-      [six-words (subvec mnemonic-vec 6 12)]]
-     [react/text {:style styles/twelve-words-description}
-      (i18n/label :t/your-recovery-phrase-description)]
-     [react/view styles/twelve-words-spacer]
-     [react/view styles/twelve-words-button-container
-      [components.common/bottom-button
-       {:forward? true
-        :on-press #(re-frame/dispatch [:my-profile/enter-two-random-words])}]]]))
-
-(defview input [error next-handler]
-  (letsubs [ref (reagent/atom nil)]
-    [text-input/text-input-with-label
-     {:placeholder       (i18n/label :t/enter-word)
-      :ref               (partial reset! ref)
-      :auto-focus        true
-      :auto-correct      false
-      :keyboard-type     "visible-password"
-      :on-change-text    #(re-frame/dispatch [:set-in [:my-profile/seed :word] %])
-      :on-submit-editing next-handler
-      :error             error}]))
+    [react/view {:flex 1}
+     [react/view {:style styles/twelve-words-container}
+      [react/text {:style styles/twelve-words-label}
+       (i18n/label :t/your-recovery-phrase)]
+      [react/view {:style styles/twelve-words-columns
+                   :ref   (partial reset! ref)}
+       [six-words (subvec mnemonic-vec 0 6)]
+       [react/view {:style styles/twelve-words-columns-separator}]
+       [six-words (subvec mnemonic-vec 6 12)]]
+      [react/text {:style styles/twelve-words-description}
+       (i18n/label :t/your-recovery-phrase-description)]
+      [react/view styles/twelve-words-spacer]]
+     [toolbar/toolbar
+      {:right
+       [quo/button {:type     :secondary
+                    :after    :main-icon/next
+                    :on-press #(re-frame/dispatch [:my-profile/enter-two-random-words])}
+        (i18n/label :t/next)]}]]))
 
 (defn next-handler [word entered-word step]
   (fn [_]
@@ -111,22 +94,35 @@
 
 (defn enter-word [step [idx word] error entered-word]
   ^{:key word}
-  [react/view {:style styles/enter-word-container}
-   [react/view {:style styles/enter-word-row}
-    [react/text {:style styles/enter-word-label}
-     (i18n/label :t/check-your-recovery-phrase)]
-    [react/text {:style styles/enter-word-n}
-     (i18n/label :t/word-n {:number (inc idx)})]]
-   [input error (next-handler word entered-word step)]
-   [react/text {:style styles/enter-word-n-description}
-    (i18n/label :t/word-n-description {:number (inc idx)})]
-   [react/view styles/twelve-words-spacer]
-   [react/view styles/twelve-words-button-container
-    [components.common/bottom-button
-     {:forward?  (not= :second-word step)
-      :label     (when (= :second-word step) (i18n/label :t/done))
-      :disabled? (string/blank? entered-word)
-      :on-press  (next-handler word entered-word step)}]]])
+  [:<>
+   [react/scroll-view {:style styles/enter-word-container}
+    [quo/text-input
+     {:placeholder       (i18n/label :t/enter-word)
+      :label             [:<>
+                          (i18n/label :t/check-your-recovery-phrase)
+                          " "
+                          [quo/text {:color :secondary}
+                           (i18n/label :t/word-n {:number (inc idx)})]]
+      :auto-focus        true
+      :auto-correct      false
+      :keyboard-type     "visible-password"
+      :monospace         true
+      :on-change-text    #(re-frame/dispatch [:set-in [:my-profile/seed :word] %])
+      :on-submit-editing next-handler
+      :error             error}]
+    [react/text {:style styles/enter-word-n-description}
+     (i18n/label :t/word-n-description {:number (inc idx)})]
+    [react/view styles/twelve-words-spacer]]
+   [toolbar/toolbar
+    {:right
+     [quo/button (merge {:type     :secondary
+                         :disabled (string/blank? entered-word)
+                         :on-press (next-handler word entered-word step)}
+                        (when-not (= :second-word step)
+                          {:after :main-icon/next}))
+      (if (= :second-word step)
+        (i18n/label :t/done)
+        (i18n/label :t/next))]}]])
 
 (defn finish []
   [react/view {:style styles/finish-container}
@@ -137,19 +133,18 @@
     (i18n/label :t/you-are-all-set)]
    [react/text {:style styles/finish-description}
     (i18n/label :t/you-are-all-set-description)]
-   [components.common/button {:button-style styles/finish-button
-                              :on-press     #(re-frame/dispatch [:navigate-back])
-                              :label        (i18n/label :t/ok-got-it)}]])
+   [react/view {:style styles/finish-button}
+    [quo/button {:on-press #(re-frame/dispatch [:navigate-back])}
+     (i18n/label :t/ok-got-it)]]])
 
 (defview backup-seed []
   (letsubs [current-multiaccount [:multiaccount]
             {:keys [step first-word second-word error word]} [:my-profile/recovery]]
     [react/keyboard-avoiding-view {:style {:flex 1}}
-     [status-bar/status-bar]
-     [toolbar/toolbar
+     [not.toolbar/toolbar
       nil
       (when-not (= :finish step)
-        (toolbar/nav-button (actions/back #(step-back step))))
+        (not.toolbar/nav-button (actions/back #(step-back step))))
       [react/view
        [react/text {:style styles/backup-seed}
         (i18n/label :t/backup-recovery-phrase)]

@@ -1,6 +1,6 @@
 (ns status-im.utils.gfycat.core
   (:require [status-im.native-module.core :as native-module]
-            [status-im.utils.datetime :as datetime]))
+            [re-frame.core :as re-frame]))
 
 (def unknown-gfy "Unknown")
 
@@ -12,3 +12,11 @@
     (native-module/generate-gfycat public-key)))
 
 (def generate-gfy (memoize build-gfy))
+
+(re-frame/reg-fx
+ :insert-gfycats
+ (fn [key-path-seq]
+   (for [key-path key-path-seq]
+     (let [public-key (first key-path)
+           path-for-gfycat (second key-path)]
+       (native-module/generate-gfycat-async public-key #(re-frame/dispatch [:gfycat-generated path-for-gfycat %]))))))

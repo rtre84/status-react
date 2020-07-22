@@ -1,41 +1,40 @@
 (ns status-im.transport.filters.core
   "This namespace is used to handle filters loading and unloading from statusgo"
-  (:require
-   [taoensso.timbre :as log]
-   [re-frame.core :as re-frame]
-   [clojure.string :as string]
-   [status-im.contact.db :as contact.db]
-   [status-im.ethereum.json-rpc :as json-rpc]
-   [status-im.utils.fx :as fx]
-   [status-im.utils.handlers :as handlers]
-   [status-im.mailserver.topics :as mailserver.topics]
-   [status-im.mailserver.core :as mailserver]
-   [status-im.multiaccounts.model :as multiaccounts.model]
-   [status-im.transport.utils :as utils]))
+  (:require [clojure.string :as string]
+            [re-frame.core :as re-frame]
+            [status-im.contact.db :as contact.db]
+            [status-im.ethereum.json-rpc :as json-rpc]
+            [status-im.mailserver.core :as mailserver]
+            [status-im.mailserver.topics :as mailserver.topics]
+            [status-im.multiaccounts.model :as multiaccounts.model]
+            [status-im.utils.fx :as fx]
+            [status-im.utils.handlers :as handlers]
+            [status-im.waku.core :as waku]
+            [taoensso.timbre :as log]))
 
 (defn is-public-key? [k]
   (string/starts-with? k "0x"))
 
-(defn load-filters-rpc [chats on-success on-failure]
-  (json-rpc/call {:method "shhext_loadFilters"
+(defn load-filters-rpc [waku-enabled? chats on-success on-failure]
+  (json-rpc/call {:method (json-rpc/call-ext-method waku-enabled? "loadFilters")
                   :params [chats]
                   :on-success                 on-success
                   :on-failure                 on-failure}))
 
-(defn remove-filters-rpc [chats on-success on-failure]
-  (json-rpc/call {:method "shhext_removeFilters"
+(defn remove-filters-rpc [waku-enabled? chats on-success on-failure]
+  (json-rpc/call {:method (json-rpc/call-ext-method waku-enabled? "removeFilters")
                   :params [chats]
                   :on-success                 on-success
                   :on-failure                 on-failure}))
 
 ;; fx functions
 
-(defn load-filter-fx [filters]
-  {:filters/load-filters filters})
+(defn load-filter-fx [waku-enabled? filters]
+  {:filters/load-filters [[waku-enabled? filters]]})
 
-(defn remove-filter-fx [filters]
+(defn remove-filter-fx [waku-enabled? filters]
   (when (seq filters)
-    {:filters/remove-filters filters}))
+    {:filters/remove-filters [waku-enabled? filters]}))
 
 ;; dispatches
 
@@ -86,7 +85,7 @@
 
 (defn loaded?
   "Given a filter, check if we already loaded it"
-  [db {:keys [filter-id] :as f}]
+  [db {:keys [filter-id]}]
   (get-in db [:filter/filters filter-id]))
 
 (def not-loaded?
@@ -141,8 +140,7 @@
   "Returns all the non-negotiated filters matching chat-id"
   [db chat-id]
   (filter
-   (fn [{:keys [negotiated?
-                filter-id] :as f}]
+   (fn [{:keys [negotiated?] :as f}]
      (and (= chat-id
              (:chat-id f))
           (not negotiated?)))
@@ -150,7 +148,8 @@
 
 ;; Filter requests
 
-(defn- ->remove-filter-request [{:keys [id filter-id filter]}]
+(defn- ->remove-filter-request
+  [{:keys [id filter-id]}]
   {:chatId id
    :filterId filter-id})
 
@@ -182,8 +181,8 @@
        (mapcat ->filter-request)))
 
 (defn- contacts->filter-requests
-  [contacts]
   "Convert added contacts to filter requests"
+  [contacts]
   (->> contacts
        (filter contact.db/added?)
        (map #(hash-map :chat-id (:public-key %)))
@@ -204,12 +203,16 @@
    :discovery? discovery
    :topic topic})
 
-(fx/defn set-filters-initialized [{:keys [db]}]
-  {:db (update db :filters/initialized inc)})
-
 ;; We check that both chats & contacts have been initialized
 (defn filters-initialized? [db]
   (>= (:filters/initialized db) 2))
+
+(fx/defn set-filters-initialized [{:keys [db] :as cofx}]
+  (fx/merge
+   cofx
+   {:db (update db :filters/initialized inc)}
+   #(when (filters-initialized? (:db %))
+      {:dispatch [:login/filters-initialized]})))
 
 (fx/defn handle-filters-added
   "Called every time we load a filter from statusgo, either from explicit call
@@ -238,7 +241,7 @@
 (fx/defn handle-negotiated-filter
   "Check if it's a new filter, if so create an shh filter and process it"
   [{:keys [db] :as cofx} {:keys [filters]}]
-  (let [processed-filters (map responses->filters filters)
+  (let [processed-filters (map #(responses->filters (assoc % :negotiated true)) filters)
         new-filters     (filter
                          (partial not-loaded? db)
                          processed-filters)]
@@ -248,37 +251,44 @@
 
 (fx/defn load-filters
   "Load all contacts and chats as filters"
-  [{:keys [db]}]
+  [{:keys [db] :as cofx}]
   (log/debug "loading filters")
   (let [chats (vals (:chats db))
         contacts (vals (:contacts/contacts db))
         filters (concat
                  (chats->filter-requests chats)
                  (contacts->filter-requests contacts))]
-    (load-filter-fx filters)))
+    (load-filter-fx (waku/enabled? cofx) filters)))
 
 ;; Load functions: utility function to load filters
 
 (fx/defn load-chat
   "Check if a filter already exists for that chat, otherw load the filter"
-  [{:keys [db]} chat-id]
+  [{:keys [db] :as cofx} chat-id]
   (when (and (filters-initialized? db)
              (not (chat-loaded? db chat-id)))
     (let [chat (get-in db [:chats chat-id])]
-      (load-filter-fx (->filter-request chat)))))
+      (load-filter-fx (waku/enabled? cofx) (->filter-request chat)))))
+
+(fx/defn load-chats
+  "Check if a filter already exists for that chat, otherw load the filter"
+  [{:keys [db] :as cofx} chats]
+  (let [chats (filter #(chat-loaded? db (:chat-id %)) chats)]
+    (when (and (filters-initialized? db) (seq chats))
+      (load-filter-fx (waku/enabled? cofx) (chats->filter-requests chats)))))
 
 (fx/defn load-contact
   "Check if we already have a filter for that contact, otherwise load the filter
   if the contact has been added"
-  [{:keys [db]} contact]
+  [{:keys [db] :as cofx} contact]
   (when-not (chat-loaded? db (:public-key contact))
-    (load-filter-fx (contacts->filter-requests [contact]))))
+    (load-filter-fx (waku/enabled? cofx) (contacts->filter-requests [contact]))))
 
 (fx/defn load-member
   "Check if we already have a filter for that member, otherwise load the filter, regardless of whether is in our contacts"
-  [{:keys [db]} public-key]
+  [{:keys [db] :as cofx} public-key]
   (when-not (chat-loaded? db public-key)
-    (load-filter-fx (->filter-request {:chat-id public-key}))))
+    (load-filter-fx (waku/enabled? cofx) (->filter-request {:chat-id public-key}))))
 
 (fx/defn load-members
   "Load multiple members"
@@ -309,19 +319,20 @@
        ;; we exclude the negotiated filters as those are not to be removed
        ;; otherwise we might miss messages
        (remove-filter-fx
+        (waku/enabled? cofx)
         (non-negotiated-filters-for-chat-id db chat-id))))))
 
 ;; reg-fx
 
 (handlers/register-handler-fx
  :filters.callback/filters-added
- (fn [{:keys [db] :as cofx} [_ filters]]
+ (fn [cofx [_ filters]]
    (log/debug "PERF" :filters.callback/filters-added)
    (handle-filters-added cofx filters)))
 
 (handlers/register-handler-fx
  :filters.callback/filters-removed
- (fn [{:keys [db] :as cofx} [_ filters]]
+ (fn [cofx [_ filters]]
    (handle-filters-removed cofx filters)))
 
 (re-frame/reg-fx
@@ -335,17 +346,21 @@
 ;; we should recreate it.
 (re-frame/reg-fx
  :filters/remove-filters
- (fn [filters]
+ (fn [[waku-enabled? filters]]
    (log/debug "removing filters" filters)
    (remove-filters-rpc
+    waku-enabled?
     (map ->remove-filter-request filters)
     #(filters-removed! filters)
     #(log/error "remove-filters: failed error" %))))
 
 (re-frame/reg-fx
  :filters/load-filters
- (fn [filters]
-   (load-filters-rpc
-    filters
-    #(filters-added! (map responses->filters %))
-    #(log/error "load-filters: failed error" %))))
+ (fn [raw-filters]
+   (let [waku-enabled? (first (first raw-filters))
+         all-filters (mapcat second raw-filters)]
+     (load-filters-rpc
+      waku-enabled?
+      all-filters
+      #(filters-added! (map responses->filters %))
+      #(log/error "load-filters: failed error" %)))))

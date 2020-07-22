@@ -6,12 +6,13 @@
             [status-im.utils.handlers :as handlers]
             [status-im.utils.email :as mail]
             [taoensso.timbre :as log]
-            [status-im.utils.config :as config]
             [status-im.i18n :as i18n]
             [status-im.utils.platform :as platform]
             [status-im.utils.build :as build]
             [status-im.transport.utils :as transport.utils]
-            [status-im.utils.datetime :as datetime]))
+            [status-im.utils.datetime :as datetime]
+            [clojure.string :as string]
+            [status-im.utils.config :as config]))
 
 (def report-email "error-reports@status.im")
 (def max-log-entries 1000)
@@ -21,17 +22,19 @@
   (when (>= (count @logs-queue) max-log-entries)
     (swap! logs-queue pop)))
 
-(defn init-logs []
-  (log/set-level! config/log-level)
-  (log/debug)
-  (log/merge-config!
-   {:output-fn (fn [& data]
-                 (let [res (apply log/default-output-fn data)]
-                   (add-log-entry res)
-                   res))}))
+(defn init-logs [level]
+  (when-not (string/blank? level)
+    (log/set-level! (-> level
+                        string/lower-case
+                        keyword))
+    (log/merge-config!
+     {:output-fn (fn [& data]
+                   (let [res (apply log/default-output-fn data)]
+                     (add-log-entry res)
+                     res))})))
 
 (defn get-js-logs []
-  (clojure.string/join "\n" @logs-queue))
+  (string/join "\n" @logs-queue))
 
 (re-frame/reg-fx
  :logs/archive-logs
@@ -41,6 +44,17 @@
     (get-js-logs)
     #(re-frame/dispatch [callback-handler %]))))
 
+(re-frame/reg-fx
+ :logs/set-level
+ (fn [level]
+   (init-logs level)))
+
+(fx/defn set-log-level
+  [{:keys [db]} log-level]
+  (let [log-level (or log-level config/log-level)]
+    {:db             (assoc-in db [:multiaccount :log-level] log-level)
+     :logs/set-level log-level}))
+
 (fx/defn send-logs
   [{:keys [db]}]
   ;; TODO: Add message explaining db export
@@ -49,20 +63,17 @@
                                                   :initial-props
                                                   :keyboard-height
                                                   :keyboard-max-height
-                                                  :navigation-stack
                                                   :network
                                                   :network-status
                                                   :peers-count
                                                   :peers-summary
                                                   :sync-state
-                                                  :tab-bar-visible?
                                                   :view-id
                                                   :chat/cooldown-enabled?
                                                   :chat/cooldowns
                                                   :chat/last-outgoing-message-sent-at
                                                   :chat/spam-messages-frequency
                                                   :chats/loading?
-                                                  :desktop/desktop
                                                   :dimensions/window
                                                   :my-profile/editing?]))]
     {:logs/archive-logs [db-json ::send-email]}))
@@ -82,28 +93,34 @@
       :on-cancel           #(re-frame/dispatch
                              [:logging/dialog-canceled])}}))
 
+(handlers/register-handler-fx
+ :show-client-error
+ (fn [_ _]
+   {:utils/show-popup {:title   (i18n/label :t/cant-report-bug)
+                       :content (i18n/label :t/mail-should-be-configured)}}))
+
 (fx/defn dialog-closed
   [{:keys [db]}]
   {:db (dissoc db :logging/dialog-shown?)})
 
 (defn email-body
-  [{:keys [:web3-node-version :mailserver/current-id
-           :node-info :peers-summary]
-    :as db}]
   "logs attached"
-  (let [build-number  (if platform/desktop? build/version build/build-no)
+  [{:keys [:web3-node-version :mailserver/current-id
+           :node-info :peers-summary]}]
+  (let [build-number  build/build-no
         build-version (str build/version " (" build-number ")")
-        separator (clojure.string/join (take 40 (repeat "-")))
+        separator (string/join (take 40 (repeat "-")))
         [enode-id ip-address port]
         (transport.utils/extract-url-components (:enode node-info))]
-    (clojure.string/join
+    (string/join
      "\n"
      (concat [(i18n/label :t/report-bug-email-template)]
              [separator
               (str "App version: " build-version)
               (str "OS: " platform/os)
               (str "Node version: " web3-node-version)
-              (str "Mailserver: " (name current-id))
+              (when current-id
+                (str "Mailserver: " (name current-id)))
               separator
               "Node Info"
               (str "id: " enode-id)
@@ -137,7 +154,9 @@
       :attachment {:path archive-path
                    :type "zip"
                    :name "status_logs.zip"}}
-     (fn [])))))
+     (fn [event]
+       (when (= event "not_available")
+         (re-frame/dispatch [:show-client-error])))))))
 
 (handlers/register-handler-fx
  :logging/dialog-canceled

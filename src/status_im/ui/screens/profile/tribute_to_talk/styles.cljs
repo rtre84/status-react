@@ -19,18 +19,6 @@
   {:text-align :center
    :color      colors/gray})
 
-(def intro-button
-  {:margin-vertical    8
-   :padding-horizontal 32
-   :align-self         :center
-   :justify-content    :center
-   :align-items        :center})
-
-(def bottom-toolbar
-  {:height           60
-   :border-top-width 1
-   :border-top-color colors/gray-lighter})
-
 (def step-n
   {:margin-top 5
    :font-size  14
@@ -97,13 +85,6 @@
 (def snt-asset-value
   {:typography :main-medium
    :color      colors/gray})
-
-(def edit-view-message-container
-  {:border-radius       8
-   :background-color    colors/blue-light
-   :margin-horizontal   72
-   :padding-horizontal  12
-   :padding-vertical    8})
 
 (def finish-label
   {:typography :header
@@ -201,13 +182,6 @@
    :padding           8
    :width             238
    :border-color      colors/gray-lighter})
-
-(defn chat-bubble [tribute-sender?]
-  {:background-color   (if tribute-sender? colors/blue-light colors/blue)
-   :padding-horizontal 12
-   :padding-vertical   6
-   :margin-top         4
-   :border-radius      8})
 
 (def pay-to-chat-bubble
   {:background-color   colors/blue-light

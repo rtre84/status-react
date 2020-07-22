@@ -1,61 +1,9 @@
 (ns status-im.ui.screens.profile.components.styles
-  (:require [status-im.ui.components.colors :as colors]
-            [status-im.utils.styles :as styles]))
+  (:require [status-im.ui.components.colors :as colors]))
 
 ;; profile header elements
 
-(def profile-header-display
-  {:flex-direction  :row
-   :justify-content :flex-start
-   :align-items     :center})
-
-(def profile-header-edit
-  {:flex-direction  :column
-   :justify-content :center})
-
-(def profile-name-text
-  {:typography      :header
-   :line-height     28
-   :text-align      :left})
-
-(def profile-name-text-with-subtitle
-  {:margin-vertical 5
-   :typography      :header
-   :line-height     28
-   :text-align      :left})
-
-(def profile-three-words
-  {:color       colors/gray})
-
-(styles/def profile-name-input-text
-  {:text-align :center
-   :flex       1
-   :desktop    {:height 20
-                :width 200}
-   :ios        {:margin-top          1
-                :height              45
-                :border-bottom-width 1
-                :border-bottom-color colors/black-transparent}
-   :android    {:border-bottom-width 2
-                :border-bottom-color colors/blue}})
-
-(def profile-header-name-container
-  {:flex            1
-   :justify-content :center
-   :align-items     :flex-start
-   :margin-left     16})
-
-(def profile-header-name-container-with-subtitle
-  {:flex            1
-   :justify-content :flex-start
-   :align-items     :flex-start
-   :align-self      :stretch
-   :margin-left     16})
-
 ;; settings items elements
-
-(def settings-item-separator
-  {:margin-left 16})
 
 (def settings-item
   {:padding-left   16
@@ -95,16 +43,7 @@
    :padding-right 10
    :color         colors/gray})
 
-(def settings-title
-  {:color         colors/gray
-   :margin-left   16
-   :margin-top    18
-   :font-size     14})
-
 ;; shared profile styles
-
-(def modal-menu
-  {:align-items :center})
 
 (def profile
   {:flex           1
@@ -116,7 +55,6 @@
 ;; sheets
 
 (def sheet-text
-  {:color       colors/gray
-   :padding     24
+  {:text-align :center
    :line-height 22
    :font-size   15})

@@ -1,53 +1,90 @@
 (ns status-im.ui.screens.qr-scanner.views
   (:require-macros [status-im.utils.views :refer [defview letsubs]])
-  (:require [reagent.core :as reagent]
-            [re-frame.core :as re-frame]
+  (:require [re-frame.core :as re-frame]
+            [clojure.string :as string]
             [status-im.i18n :as i18n]
-            [status-im.ui.components.react :as react]
             [status-im.ui.components.camera :as camera]
-            [status-im.ui.components.status-bar.view :as status-bar]
-            [status-im.ui.components.toolbar.view :as toolbar]
+            [status-im.ui.components.react :as react]
+            [status-im.ui.components.toolbar.view :as topbar]
             [status-im.ui.screens.qr-scanner.styles :as styles]
-            [status-im.ui.components.toolbar.actions :as actions]))
+            [status-im.ui.components.colors :as colors]
+            [status-im.utils.config :as config]
+            [quo.core :as quo]
+            [reagent.core :as reagent]))
 
-(defview qr-scanner-toolbar [title identifier]
-  [react/view
-   [status-bar/status-bar]
-   [toolbar/toolbar {:style {:background-color :white}}
-    [toolbar/nav-button (actions/back
-                         #(do
-                            (re-frame/dispatch [:qr-scanner.callback/scan-qr-code-cancel identifier])
-                            (re-frame/dispatch [:navigate-back])))]
-    [toolbar/content-title title]]])
+(defn- topbar [_ {:keys [title] :as opts}]
+  [topbar/toolbar
+   {:transparent? true}
+   [topbar/nav-text
+    {:style   {:color colors/white-persist :margin-left 16}
+     :handler #(re-frame/dispatch [:qr-scanner.callback/scan-qr-code-cancel opts])}
+    (i18n/label :t/cancel)]
+   [topbar/content-title {:color colors/white-persist}
+    (or title (i18n/label :t/scan-qr))]
+   #_[topbar/actions [{:icon      (if (= :on camera-flashlight)
+                                    :main-icons/flash-active
+                                    :main-icons/flash-inactive)
+                       :icon-opts {:color colors/white}
+                       :handler   #(re-frame/dispatch [:wallet/toggle-flashlight])}]]])
 
-(defn on-barcode-read [identifier data]
-  (re-frame/dispatch [:qr-scanner.callback/scan-qr-code-success identifier (camera/get-qr-code-data data)]))
+(defn qr-test-view [opts]
+  (let [text-value (atom "")]
+    [react/safe-area-view {:style {:flex             1
+                                   :background-color colors/black-persist}}
+     [topbar nil opts]
+     [react/view {:flex            1
+                  :align-items     :center
+                  :justify-content :center}
+      [react/text-input {:multiline      true
+                         :style          {:color colors/white-persist}
+                         :on-change-text #(reset! text-value %)}]
+      [react/view {:flex-direction :row}
+       [quo/button
+        {:on-press #(re-frame/dispatch [:qr-scanner.callback/scan-qr-code-cancel opts])}
+        "Cancel"]
+       [quo/button
+        {:on-press #(re-frame/dispatch [:qr-scanner.callback/scan-qr-code-success opts (when-let [text @text-value] (string/trim text))])}
+        "Ok"]]]]))
 
-;; identifier is passed via navigation params instead of subs in order to ensure
-;; that two separate instances of `qr-scanner` screen can work simultaneously
-(defview qr-scanner [{identifier :current-qr-context} screen-focused?]
-  (letsubs [camera-initialized? (reagent/atom false)
-            barcode-read? (reagent/atom false)]
-    [react/view styles/barcode-scanner-container
-     [qr-scanner-toolbar (or (:toolbar-title identifier) (i18n/label :t/scan-qr)) identifier]
-     ;; camera component should be hidden if screen is not shown
-     ;; otherwise another screen with camera from a different stack
-     ;; will not work properly
-     (when @screen-focused?
-       [camera/camera {:onBarCodeRead #(if (:multiple? identifier)
-                                         (on-barcode-read identifier %)
-                                         (when-not @barcode-read?
-                                           (do (reset! barcode-read? true)
-                                               (on-barcode-read identifier %))))
-                       :ref           #(reset! camera-initialized? true)
-                       :style         styles/barcode-scanner}])
-     [react/view styles/rectangle-container
-      [react/view styles/rectangle
-       [react/image {:source {:uri :corner_left_top}
-                     :style  styles/corner-left-top}]
-       [react/image {:source {:uri :corner_right_top}
-                     :style  styles/corner-right-top}]
-       [react/image {:source {:uri :corner_right_bottom}
-                     :style  styles/corner-right-bottom}]
-       [react/image {:source {:uri :corner_left_bottom}
-                     :style  styles/corner-left-bottom}]]]]))
+(defn corner [border1 border2 corner]
+  [react/view (assoc {:border-color colors/white-persist :width 60 :height 60} border1 5 border2 5 corner 32)])
+
+(defn- viewfinder [size]
+  [react/view {:style styles/viewfinder-port}
+   [react/view {:width size :height size :justify-content :space-between}
+    [react/view {:flex-direction :row :justify-content :space-between}
+     [corner :border-top-width :border-left-width :border-top-left-radius]
+     [corner :border-top-width :border-right-width :border-top-right-radius]]
+    [react/view {:flex-direction :row :justify-content :space-between}
+     [corner :border-bottom-width :border-left-width :border-bottom-left-radius]
+     [corner :border-bottom-width :border-right-width :border-bottom-right-radius]]]])
+
+(defn on-barcode-read [opts data]
+  (re-frame/dispatch [:qr-scanner.callback/scan-qr-code-success opts (camera/get-qr-code-data data)]))
+
+(defview qr-scanner []
+  (letsubs [read-once?        (atom false)
+            {:keys [height width]} [:dimensions/window]
+            camera-flashlight [:wallet.send/camera-flashlight]
+            opts              [:get-screen-params]
+            camera-ref        (atom nil)
+            focus-object      (reagent/atom nil)
+            layout            (atom nil)]
+    (if config/qr-test-menu-enabled?
+      [qr-test-view opts]
+      [react/safe-area-view {:style {:flex             1
+                                     :background-color colors/black-persist}}
+       [topbar camera-flashlight opts]
+       [react/with-activity-indicator
+        {}
+        [camera/camera
+         {:ref                          #(reset! camera-ref %)
+          :style                        {:flex 1}
+          :capture-audio                false
+          :on-layout                    (camera/on-layout layout)
+          :auto-focus-point-of-interest @focus-object
+          :on-tap                       (camera/on-tap camera-ref layout focus-object)
+          :on-bar-code-read             #(when-not @read-once?
+                                           (reset! read-once? true)
+                                           (on-barcode-read opts %))}]]
+       [viewfinder (int (* 2 (/ (min height width) 3)))]])))

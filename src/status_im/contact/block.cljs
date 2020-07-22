@@ -1,13 +1,10 @@
 (ns status-im.contact.block
   (:require [re-frame.core :as re-frame]
-            [status-im.chat.models :as chat.models]
-            [status-im.chat.models.loading :as chat.models.loading]
-            [status-im.chat.models.message :as chat.models.message]
+            [status-im.chat.models.message-list :as message-list]
             [status-im.contact.db :as contact.db]
             [status-im.data-store.chats :as chats-store]
             [status-im.data-store.contacts :as contacts-store]
-            [status-im.i18n :as i18n]
-            [status-im.ui.screens.navigation :as navigation]
+            [status-im.navigation :as navigation]
             [status-im.utils.fx :as fx]))
 
 (fx/defn remove-current-chat-id
@@ -21,33 +18,22 @@
    public-key
    {:keys [chat-id
            unviewed-messages-count
-           last-message-content
-           last-message-timestamp
-           last-message-content-type]}]
+           last-message]}]
   (let [removed-messages-ids (keep
                               (fn [[message-id {:keys [from]}]]
                                 (when (= from public-key)
                                   message-id))
-                              (get-in db [:chats chat-id :messages]))
+                              (get-in db [:messages chat-id]))
         db (-> db
                ;; remove messages
-               (update-in [:chats chat-id :messages]
+               (update-in [:messages chat-id]
                           #(apply dissoc % removed-messages-ids))
-               ;; remove message groups
-               (update-in [:chats chat-id]
-                          dissoc :message-groups)
                (update-in [:chats chat-id]
                           assoc
                           :unviewed-messages-count unviewed-messages-count
-                          :last-message-content last-message-content
-                          :last-message-timestamp last-message-timestamp
-                          :last-message-content-type last-message-content-type))]
-    (fx/merge cofx
-              {:db db}
-              ;; recompute message group
-              (chat.models.loading/group-chat-messages
-               chat-id
-               (vals (get-in db [:chats chat-id :messages]))))))
+                          :last-message last-message))]
+    {:db (assoc-in db [:message-lists chat-id]
+                   (message-list/add-many nil (vals (get-in db [:messages chat-id]))))}))
 
 (fx/defn contact-blocked
   {:events [::contact-blocked]}
@@ -71,7 +57,8 @@
                        (assoc-in [:contacts/contacts public-key] contact)
                        ;; remove the 1-1 chat if it exists
                        (update-in [:chats] dissoc public-key))}
-              (contacts-store/block contact #(re-frame/dispatch [::contact-blocked contact (map chats-store/<-rpc %)]))
+              (contacts-store/block contact #(do (re-frame/dispatch [::contact-blocked contact (map chats-store/<-rpc %)])
+                                                 (re-frame/dispatch [:hide-popover])))
               ;; reset navigation to avoid going back to non existing one to one chat
               (if from-one-to-one-chat?
                 remove-current-chat-id

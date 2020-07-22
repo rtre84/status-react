@@ -5,31 +5,31 @@
             [status-im.i18n :as i18n]
             [re-frame.core :as re-frame]
             status-im.ui.screens.mobile-network-settings.events
-            [status-im.ui.components.toolbar.view :as toolbar]
-            [status-im.ui.components.status-bar.view :as status-bar]
             [status-im.ui.screens.profile.components.views :as profile.components]
-            [status-im.utils.platform :as platform]
-            [status-im.ui.screens.mobile-network-settings.sheets :as sheets]))
+            [status-im.ui.screens.mobile-network-settings.sheets :as sheets]
+            [status-im.ui.components.topbar :as topbar]))
+
+(defn hide-sheet-and-dispatch [event]
+  (re-frame/dispatch [:bottom-sheet/hide])
+  (re-frame/dispatch event))
 
 (defn settings-separator []
   [react/view
-   {:style styles/settings-separator}])
+   {:style (styles/settings-separator)}])
 
+;; TODO(Ferossgp): To refactor, uses outdated components
 (views/defview mobile-network-settings []
   (views/letsubs
     [{:keys [syncing-on-mobile-network?
              remember-syncing-choice?]}
      [:multiaccount]]
     [react/view {:style styles/container}
-     [status-bar/status-bar]
-     [toolbar/simple-toolbar (i18n/label :t/mobile-network-settings)]
-     (when platform/ios?
-       [settings-separator])
+     [topbar/topbar {:title :t/mobile-network-settings}]
      [react/view {:style styles/switch-container}
       [profile.components/settings-switch-item
        {:label-kw  :t/mobile-network-use-mobile
         :value     syncing-on-mobile-network?
-        :action-fn #(re-frame/dispatch [:mobile-network/set-syncing %])}]]
+        :action-fn #(hide-sheet-and-dispatch [:mobile-network/set-syncing %])}]]
      [react/view {:style styles/details}
       [react/text {:style styles/use-mobile-data-text}
        (i18n/label :t/mobile-network-use-mobile-data)]]
@@ -37,19 +37,17 @@
       [profile.components/settings-switch-item
        {:label-kw  :t/mobile-network-ask-me
         :value     (not remember-syncing-choice?)
-        :action-fn #(re-frame/dispatch [:mobile-network/ask-on-mobile-network? %])}]]
+        :action-fn #(hide-sheet-and-dispatch [:mobile-network/ask-on-mobile-network? %])}]]
      [settings-separator]
      [react/view
       {:style styles/defaults-container}
       [react/text
        {:style    styles/defaults
-        :on-press #(re-frame/dispatch [:mobile-network/restore-defaults])}
+        :on-press #(hide-sheet-and-dispatch [:mobile-network/restore-defaults])}
        "Restore Defaults"]]]))
 
 (def settings-sheet
-  {:content-height 340
-   :content        sheets/settings-sheet})
+  {:content sheets/settings-sheet})
 
 (def offline-sheet
-  {:content        sheets/offline-sheet
-   :content-height 180})
+  {:content sheets/offline-sheet})

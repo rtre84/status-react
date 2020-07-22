@@ -1,32 +1,16 @@
 (ns status-im.ui.screens.profile.models
   (:require [clojure.spec.alpha :as spec]
+            [clojure.string :as clojure.string]
             [re-frame.core :as re-frame]
             [status-im.ui.components.react :as react]
-            [status-im.ui.screens.profile.navigation]
             [status-im.multiaccounts.update.core :as multiaccounts.update]
             [status-im.chat.models :as chat-models]
-            [status-im.chat.commands.input :as commands-input]
-            [status-im.utils.image-processing :as image-processing]
             [taoensso.timbre :as log]
             [status-im.utils.fx :as fx]))
 
-(defn open-image-picker! [callback-event]
-  (react/show-image-picker
-   (fn [image]
-     (let [path (get (js->clj image) "path")
-           _ (log/debug path)
-           on-success (fn [base64]
-                        (re-frame/dispatch [callback-event base64]))
-           on-error (fn [type error]
-                      (.log js/console type error))]
-       (image-processing/img->base64 path on-success on-error 150 150)))
-   "photo"))
-
-(defn send-transaction [chat-id {:keys [db] :as cofx}]
-  (let [send-command (get-in db [:id->command ["send" #{:personal-chats}]])]
-    (fx/merge cofx
-              (chat-models/start-chat chat-id {:navigation-reset? true})
-              (commands-input/select-chat-input-command send-command nil))))
+(defn send-transaction [chat-id cofx]
+  ;;TODO start send transaction command flow
+  (chat-models/start-chat cofx chat-id {:navigation-reset? true}))
 
 (defn- valid-name? [name]
   (spec/valid? :profile/name name))
@@ -54,24 +38,13 @@
 
 (fx/defn save [{:keys [db now] :as cofx}]
   (let [{:keys [photo-path]} (:my-profile/profile db)
-        cleaned-name (clean-name db :my-profile/profile)
-        cleaned-edit (merge {:name         cleaned-name
-                             :last-updated now}
-                            (if photo-path
-                              {:photo-path photo-path}))]
+        cleaned-name (clean-name db :my-profile/profile)]
     (fx/merge cofx
               (clear-profile)
-              (multiaccounts.update/multiaccount-update cleaned-edit {}))))
-
-(defn update-picture [this-event base64-image {:keys [db] :as cofx}]
-  (if base64-image
-    (fx/merge cofx
-              {:db (-> db
-                       (assoc-in [:my-profile/profile :photo-path]
-                                 (str "data:image/jpeg;base64," base64-image))
-                       (assoc :my-profile/editing? true))}
-              save)
-    {:open-image-picker this-event}))
+              (multiaccounts.update/multiaccount-update :name cleaned-name {})
+              (multiaccounts.update/multiaccount-update :last-updated now {})
+              (when photo-path
+                (multiaccounts.update/multiaccount-update :photo-path photo-path {})))))
 
 (defn start-editing-group-chat-profile [{:keys [db]}]
   (let [current-chat-name (get-in db [:chats (:current-chat-id db) :name])]

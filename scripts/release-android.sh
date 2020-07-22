@@ -1,32 +1,72 @@
 #!/usr/bin/env bash
 
+# Needed to fail on must_get_env()
+set -e
+
 GIT_ROOT=$(cd "${BASH_SOURCE%/*}" && git rev-parse --show-toplevel)
-_current_dir=$(cd "${BASH_SOURCE%/*}" && pwd)
-source "$_current_dir/lib/setup/path-support.sh"
+source "${GIT_ROOT}/scripts/colors.sh"
 
-source_lib "platform.sh"
+function must_get_env() {
+  declare -n VAR_NAME="$1"
+  if [[ -n "${VAR_NAME}" ]]; then
+      echo "${VAR_NAME}"
+      return
+  fi
+  echo -e "${RED}No required env variable:${RST} ${BLD}${!VAR_NAME}${RST}" 1>&2
+  exit 1
+}
 
-nixOpts=(
-  "--arg env {BUILD_ENV=\"${BUILD_ENV}\";}"
-  "--arg env {ANDROID_ABI_SPLIT=\"${ANDROID_ABI_SPLIT}\";}"
-  "--arg env {ANDROID_ABI_INCLUDE=\"${ANDROID_ABI_INCLUDE}\";}"
-  "--argstr build-type ${BUILD_TYPE}"
-  "--argstr build-number ${BUILD_NUMBER}"
-  "--argstr keystore-file ${STORE_FILE}"
-)
+function append_env_export() {
+  ENV_VAR_NAME=${1}
+  if [[ -n "${!ENV_VAR_NAME}" ]]; then
+    echo "export ${ENV_VAR_NAME}=\"${!ENV_VAR_NAME}\";" >> "${SECRETS_FILE_PATH}"
+  fi
+}
 
-if is_macos; then
+config=''
+if [ -n "${STATUS_GO_SRC_OVERRIDE}" ]; then
+  config+="status-im.status-go.src-override=\"${STATUS_GO_SRC_OVERRIDE}\";"
+fi
+if [ -n "${NIMBUS_SRC_OVERRIDE}" ]; then
+  config+="status-im.nimbus.src-override=\"${NIMBUS_SRC_OVERRIDE}\";"
+fi
+config+="status-im.build-type=\"$(must_get_env BUILD_TYPE)\";"
+config+="status-im.build-number=\"$(must_get_env BUILD_NUMBER)\";"
+config+="status-im.android.keystore-path=\"$(must_get_env KEYSTORE_PATH)\";"
+config+="status-im.android.abi-split=\"$(must_get_env ANDROID_ABI_SPLIT)\";"
+config+="status-im.android.abi-include=\"$(must_get_env ANDROID_ABI_INCLUDE)\";"
+nixOpts=()
+
+# If no secrets were passed there's no need to pass the 'secretsFile'
+if [[ -n "${KEYSTORE_ALIAS}${KEYSTORE_ALIAS}${KEYSTORE_ALIAS}" ]]; then
+  # Secrets like this can't be passed via args or they end up in derivation
+  SECRETS_FILE_PATH=$(mktemp)
+  trap "rm -f ${SECRETS_FILE_PATH}" EXIT ERR INT QUIT
+  chmod 644 ${SECRETS_FILE_PATH}
+  append_env_export 'KEYSTORE_PASSWORD'
+  append_env_export 'KEYSTORE_ALIAS'
+  append_env_export 'KEYSTORE_KEY_PASSWORD'
+  nixOpts+=("--argstr" "secretsFile" "${SECRETS_FILE_PATH}")
+fi
+
+# Used by Clojure at compile time to include JS modules
+nixOpts+=("--argstr" "buildEnv" "$(must_get_env BUILD_ENV)")
+
+if [[ "$(uname -s)" =~ Darwin ]]; then
   # Start a watchman instance if not started already and store its socket path.
-  # In order to get access to the right versions of watchman and jq, we start an ad-hoc nix-shell that imports the packages from nix/nixpkgs-bootstrap.
+  # In order to get access to the right versions of watchman and jq,
+  # we start an ad-hoc nix-shell that imports the packages from nix/nixpkgs-bootstrap.
   WATCHMAN_SOCKFILE=$(watchman get-sockname --no-pretty | jq -r .sockname)
   nixOpts+=(
-    "--argstr watchmanSockPath ${WATCHMAN_SOCKFILE}"
-    "--option extra-sandbox-paths ${STORE_FILE};${WATCHMAN_SOCKFILE}"
+    "--argstr" "watchmanSockPath" "${WATCHMAN_SOCKFILE}"
+    "--option" "extra-sandbox-paths" "${KEYSTORE_PATH} ${SECRETS_FILE_PATH} ${WATCHMAN_SOCKFILE}"
   )
 else
   nixOpts+=(
-    "--option extra-sandbox-paths ${STORE_FILE}"
+    "--option" "extra-sandbox-paths" "${KEYSTORE_PATH} ${SECRETS_FILE_PATH}"
   )
 fi
 
-${GIT_ROOT}/nix/build.sh targets.mobile.${TARGET_OS}.release "${nixOpts[@]}"
+nixOpts+=("--arg" "config" "{${config}}")
+
+${GIT_ROOT}/nix/scripts/build.sh targets.mobile.android.release "${nixOpts[@]}"

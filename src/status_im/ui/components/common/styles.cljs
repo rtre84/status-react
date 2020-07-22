@@ -11,18 +11,6 @@
              :background-color colors/black-transparent
              :opacity          0.5}})
 
-(def list-separator
-  {:margin-left 72})
-
-(def network-container
-  {:flex-direction     :row
-   :padding-horizontal 13
-   :padding-vertical   11
-   :align-items        :center})
-
-(def label-action-text
-  {:color colors/blue})
-
 (defn logo-container [size]
   {:width            size
    :height           size
@@ -34,26 +22,8 @@
 (defn logo [icon-size]
   {:width  icon-size
    :height icon-size
+   :color :none
    :container-style {}})
-
-(def bottom-button
-  {:flex-direction :row
-   :align-items    :center})
-
-(defn button [style background? disabled?]
-  (merge
-   {:padding-vertical   12
-    :padding-horizontal 42
-    :border-radius      8
-    :background-color   (cond disabled?
-                              colors/gray-lighter
-                              background?
-                              colors/blue-transparent-10)}
-   style))
-
-(def button-label
-  {:text-align :center
-   :color      colors/blue})
 
 (defn counter-container [size]
   {:width            size
@@ -66,7 +36,7 @@
 (defn counter-label [size]
   {:font-size  (inc (/ size 2))
    :typography :main-medium
-   :color      colors/white
+   :color      colors/white-persist
    :text-align :center})
 
 (def image-contain

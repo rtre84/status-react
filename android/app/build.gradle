@@ -21,7 +21,7 @@ import com.sun.org.apache.xalan.internal.xsltc.compiler.Copy
  *   bundleAssetName: "index.android.bundle",
  *
  *   // the entry file for bundle generation
- *   entryFile: "index.android.js",
+ *   entryFile: "index.js",
  *
  *   // whether to bundle JS and assets in debug mode
  *   bundleInDebug: false,
@@ -70,7 +70,7 @@ import com.sun.org.apache.xalan.internal.xsltc.compiler.Copy
  *   inputExcludes: ["android/**", "ios/**"],
  *
  *   // override which node gets called and with what additional arguments
- *   nodeExecutableAndArgs: ["node"],
+ *   nodeExecutableAndArgs: ["node", "--max-old-space-size=8192"],
  *
  *   // supply additional arguments to the packager
  *   extraPackagerArgs: []
@@ -78,9 +78,13 @@ import com.sun.org.apache.xalan.internal.xsltc.compiler.Copy
  */
 project.ext.react = [
     nodeExecutableAndArgs: ["node", "--max-old-space-size=16384"],
-    entryFile: "index.android.js",
-    enableHermes: true,     // clean and rebuild if changing. NOTE: Hermes engine is required for Android 64-bit builds running on 64 devices, to guard against a hang in the UI thread after invoking status-go
-    hermesCommand: "../../node_modules/hermes-engine/%OS-BIN%/hermes", // Can be removed once RN moves to a version which depends on hermes-engine instead of hermesvm
+    entryFile: "index.js",
+    /* NOTE: Hermes engine is required for Android 64-bit builds running on 64 devices,
+     *       to guard against a hang in the UI thread after invoking status-go.
+     * Also a clean and rebuild is required when changing this. */
+    enableHermes: true,
+    /* Disable 'The first definition was here.' warnings */
+    hermesFlagsRelease: ["-w"],
     bundleInPr: true,
     inputExcludes: ["android/**", "ios/**", "react-native/**", "src/**", "test/**"]
 ]
@@ -206,7 +210,7 @@ android {
         pickFirst '**/x86_64/libc++_shared.so'
         pickFirst '**/x86/libjsc.so'
         pickFirst '**/armeabi-v7a/libjsc.so'
-        
+
         /** Fix for: Execution failed for task ':app:transformNativeLibsWithStripDebugSymbolForDebug'.
         *   with recent version of ndk (17.0.4754217)
         */
@@ -226,10 +230,10 @@ android {
         }
         release {
             /* environment variables take precedence over gradle.properties file */
-            storeFile     file(getEnvOrConfig('STATUS_RELEASE_STORE_FILE').replaceAll("~", System.properties['user.home']))
-            storePassword getEnvOrConfig('STATUS_RELEASE_STORE_PASSWORD')
-            keyAlias      getEnvOrConfig('STATUS_RELEASE_KEY_ALIAS')
-            keyPassword   getEnvOrConfig('STATUS_RELEASE_KEY_PASSWORD')
+            storeFile     file(getEnvOrConfig('KEYSTORE_PATH').replaceAll("~", System.properties['user.home']))
+            storePassword getEnvOrConfig('KEYSTORE_PASSWORD')
+            keyAlias      getEnvOrConfig('KEYSTORE_ALIAS')
+            keyPassword   getEnvOrConfig('KEYSTORE_KEY_PASSWORD')
         }
     }
     splits {
@@ -251,7 +255,6 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://facebook.github.io/react-native/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             signingConfig signingConfigs.release
@@ -275,8 +278,7 @@ android {
             def versionCodes = ["armeabi-v7a": 1, "x86": 2, "arm64-v8a": 3, "x86_64": 4]
             def abi = output.getFilter(OutputFile.ABI)
             if (abi != null) {  // null for the universal-debug, universal-release variants
-                output.versionCodeOverride =
-                        versionCodes.get(abi) * 1048576 + defaultConfig.versionCode
+                output.versionCodeOverride = versionCodes.get(abi) + defaultConfig.versionCode
             }
 
         }
@@ -296,6 +298,19 @@ dependencies {
     implementation fileTree(dir: "libs", include: ["*.jar"])
     implementation "com.facebook.react:react-native:+"  // From node_modules
 
+    implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.0.0"
+
+    debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}") {
+        exclude group:'com.facebook.fbjni'
+    }
+    // TODO Uncomment once Flipper does not cause webview crashes in Debug mode
+    // debugImplementation("com.facebook.flipper:flipper-network-plugin:${FLIPPER_VERSION}") {
+    //      exclude group:'com.facebook.flipper'
+    // }
+    debugImplementation("com.facebook.flipper:flipper-fresco-plugin:${FLIPPER_VERSION}") {
+        exclude group:'com.facebook.flipper'
+    }
+
     if (enableHermes) {
       def hermesPath = "../../node_modules/hermes-engine/android/";
       debugImplementation files(hermesPath + "hermes-debug.aar")
@@ -305,6 +320,10 @@ dependencies {
       implementation jscFlavor
     }
 
+    // react-native-screens
+    implementation 'androidx.appcompat:appcompat:1.1.0-rc01'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0-alpha02'
+
     implementation 'androidx.multidex:multidex:2.0.1' // only needed if minSdkVersion is less than 21 (https://developer.android.com/studio/build/multidex)
     implementation project(':react-native-dialogs')
     // Force using exact RN version instead of relying on gradle dependency resolution
@@ -312,38 +331,42 @@ dependencies {
     // NOTE: Uncomment if building RN from a fork
     //compile ("com.facebook.react:react-native:0.55.4") { force = true }  // From node_modules
     implementation project(':react-native-status')
-    implementation project(':react-native-webview-bridge')
     implementation project(':react-native-status-keycard')
-    implementation "com.google.android.gms:play-services-base:${rootProject.ext.googlePlayServicesVersion}"
-    implementation 'com.google.firebase:firebase-core:16.0.9' //this decides your firebase SDK version
-    implementation 'com.google.firebase:firebase-messaging:18.0.0'
-
     implementation 'com.github.status-im:function:0.0.1'
-    implementation 'com.facebook.fresco:animated-gif:1.10.0'
+    implementation 'com.facebook.fresco:fresco:2.0.0'
+    implementation 'com.facebook.fresco:animated-gif:2.0.0'
+}
+
+def getLocalNDKDir = { ->
+    def rootDir = project.rootDir
+    def localProperties = new File(rootDir, "local.properties")
+    if (!localProperties.exists()) {
+        return null
+    }
+    Properties properties = new Properties()
+    localProperties.withInputStream { instr ->
+        properties.load(instr)
+    }
+    return properties.getProperty('ndk.dir')
 }
 
 // Run this once to be able to run the application with BUCK
 // puts all compile dependencies into folder libs for BUCK to use
-
 task hemroidBuild(type: Exec) {
-    def rootDir = project.rootDir
-    def localProperties = new File(rootDir, "local.properties")
-
-    def ndkDir = System.env.ANDROID_NDK
-    if (localProperties.exists()) {
-        Properties properties = new Properties()
-        localProperties.withInputStream { instr ->
-            properties.load(instr)
-        }
-        ndkDir = properties.getProperty('ndk.dir')
+    def localNdkDir = getLocalNDKDir()
+    def ndkDir = System.env.ANDROID_NDK_ROOT
+    if (localNdkDir != null) {
+        ndkDir = localNdkDir 
     }
-    executable "$ndkDir/ndk-build"
+
+    def execPath = "$ndkDir/ndk-build"
+    def exec = new File(execPath)
+    if (!exec.exists()) {
+        throw new GradleException("No ndk-build binary found!")
+    }
+    executable execPath
 }
 
 preBuild.dependsOn hemroidBuild
-
-// Must be at bottom to avoid dependency collision
-apply plugin: 'com.google.gms.google-services'
-com.google.gms.googleservices.GoogleServicesPlugin.config.disableVersionCheck = true
 
 apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)

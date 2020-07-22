@@ -1,16 +1,19 @@
 (ns ^{:doc "Mailserver events and API"}
  status-im.mailserver.topics
-  (:require [status-im.ethereum.json-rpc :as json-rpc]
+  (:require [clojure.set :as clojure.set]
+            [status-im.ethereum.json-rpc :as json-rpc]
             [status-im.mailserver.constants :as constants]
             [status-im.utils.fx :as fx]
             [taoensso.timbre :as log]))
 
-(defn calculate-last-request [{:keys [discovery?]}
+(defn calculate-last-request [{:keys [negotiated?
+                                      discovery?]}
                               {:keys [previous-last-request
                                       now-s]}]
   ;; New topic, if discovery we don't fetch history
   (if (and (nil? previous-last-request)
-           discovery?)
+           (or discovery?
+               negotiated?))
     (- now-s 10)
     (max previous-last-request
          (- now-s constants/max-request-range))))
@@ -34,13 +37,9 @@
     {::json-rpc/call [{:method "mailservers_addMailserverTopic"
                        :params [mailserver-topic]
                        :on-success #(log/debug "added mailserver-topic successfully")
-                       :on-failure #(log/error "failed to delete mailserver topic" %)}]}))
+                       :on-failure #(log/error "failed to add mailserver topic" %)}]}))
 
 (defn new-chat-ids? [previous-mailserver-topic new-mailserver-topic]
-  (seq (clojure.set/difference (:chat-ids new-mailserver-topic)
-                               (:chat-ids previous-mailserver-topic))))
-
-(defn new-filter-ids? [previous-mailserver-topic new-mailserver-topic]
   (seq (clojure.set/difference (:chat-ids new-mailserver-topic)
                                (:chat-ids previous-mailserver-topic))))
 
@@ -115,8 +114,11 @@
   "return all the topics for this chat, including discovery topics if specified"
   [topics chat-id include-discovery?]
   (reduce-kv
-   (fn [acc topic {:keys [discovery? chat-ids]}]
-     (if (or (and discovery?
+   (fn [acc topic {:keys [negotiated?
+                          discovery?
+                          chat-ids]}]
+     (if (or (and (or discovery?
+                      negotiated?)
                   include-discovery?)
              (chat-ids chat-id))
        (conj acc topic)
@@ -129,7 +131,7 @@
   Returns those topic that had chat-id but the member is not there anymore"
   [topics chat-id members]
   (reduce
-   (fn [acc {:keys [discovery? chat-ids] :as topic}]
+   (fn [acc {:keys [chat-ids] :as topic}]
      (cond (some chat-ids members)
            (update acc :modified conj
                    (assoc topic

@@ -1,6 +1,6 @@
 pipeline {
 
-  agent { label 'linux1' }
+  agent { label 'linux' }
 
   parameters {
     string(
@@ -20,6 +20,13 @@ pipeline {
 
 
   stages {
+    stage('Setup') {
+      steps { script {
+        dir('test/appium') {
+          sh 'pip3 install --user -r requirements.txt'
+        }
+      } }
+    }
     stage('Test') {
       steps {
         withCredentials([
@@ -33,10 +40,15 @@ pipeline {
             usernameVariable: 'SAUCE_USERNAME',
             passwordVariable: 'SAUCE_ACCESS_KEY'
           ),
+          string(
+            credentialsId: 'etherscan-api-key',
+            variable: 'ETHERSCAN_API_KEY'
+          ),
         ]) {
           dir('test/appium/tests') {
             sh """
               python3 -m pytest -m testrail_id \
+                -m "not upgrade" \
                 -n24 --rerun_count=2 \
                 --testrail_report=True \
                 --network=${params.NETWORK} \

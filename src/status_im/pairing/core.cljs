@@ -1,48 +1,37 @@
 (ns status-im.pairing.core
-  (:require [clojure.string :as string]
-            [re-frame.core :as re-frame]
-            [status-im.chat.models :as models.chat]
-            [status-im.contact.core :as contact]
-            [status-im.contact.db :as contact.db]
-            [status-im.contact.device-info :as device-info]
+  (:require [re-frame.core :as re-frame]
             [status-im.ethereum.json-rpc :as json-rpc]
             [status-im.i18n :as i18n]
-            [status-im.multiaccounts.model :as multiaccounts.model]
-            [status-im.transport.message.pairing :as transport.pairing]
-            [status-im.transport.message.protocol :as protocol]
-            [status-im.ui.screens.navigation :as navigation]
+            [status-im.navigation :as navigation]
             [status-im.utils.config :as config]
             [status-im.utils.fx :as fx]
-            [status-im.utils.identicon :as identicon]
-            [status-im.utils.pairing :as pairing.utils]
             [status-im.utils.platform :as utils.platform]
-            [status-im.utils.types :as types]))
+            [status-im.waku.core :as waku]
+            [taoensso.timbre :as log]))
 
-(defn enable-installation-rpc [installation-id on-success on-failure]
-  (json-rpc/call {:method "shhext_enableInstallation"
+(defn enable-installation-rpc [waku-enabled? installation-id on-success on-failure]
+  (json-rpc/call {:method (json-rpc/call-ext-method waku-enabled? "enableInstallation")
                   :params [installation-id]
                   :on-success on-success
                   :on-failure on-failure}))
 
-(defn disable-installation-rpc [installation-id on-success on-failure]
-  (json-rpc/call {:method "shhext_disableInstallation"
+(defn disable-installation-rpc [waku-enabled? installation-id on-success on-failure]
+  (json-rpc/call {:method (json-rpc/call-ext-method waku-enabled? "disableInstallation")
                   :params [installation-id]
                   :on-success on-success
                   :on-failure on-failure}))
 
-(defn set-installation-metadata-rpc [installation-id metadata on-success on-failure]
-  (json-rpc/call {:method "shhext_setInstallationMetadata"
+(defn set-installation-metadata-rpc [waku-enabled? installation-id metadata on-success on-failure]
+  (json-rpc/call {:method (json-rpc/call-ext-method waku-enabled? "setInstallationMetadata")
                   :params                 [installation-id metadata]
                   :on-success                 on-success
                   :on-failure                 on-failure}))
 
-(defn get-our-installations-rpc [on-success on-failure]
-  (json-rpc/call {:method "shhext_getOurInstallations"
+(defn get-our-installations-rpc [waku-enabled? on-success on-failure]
+  (json-rpc/call {:method (json-rpc/call-ext-method waku-enabled? "getOurInstallations")
                   :params  []
                   :on-success       on-success
                   :on-failure       on-failure}))
-
-(def contact-batch-n 4)
 
 (defn compare-installation
   "Sort installations, first by our installation-id, then on whether is
@@ -65,43 +54,11 @@
   [our-installation-id installations]
   (sort (partial compare-installation our-installation-id) installations))
 
-(defn pair-installation [cofx]
-  (let [fcm-token         (get-in cofx [:db :notifications :fcm-token])
-        installation-id (get-in cofx [:db :multiaccount :installation-id])
-        installation-name (get-in cofx [:db :pairing/installations installation-id :name])
-        device-type     utils.platform/os]
-    (protocol/send (transport.pairing/PairInstallation. installation-id device-type installation-name fcm-token) nil cofx)))
-
-(fx/defn confirm-message-processed
-  [cofx confirmation]
-  {:transport/confirm-messages-processed [confirmation]})
-
 (defn send-pair-installation
-  [cofx payload]
-  (let [current-public-key (multiaccounts.model/current-public-key cofx)]
-    {:shh/send-pairing-message {:src     current-public-key
-                                :payload payload}}))
-
-(defn merge-contact [local remote]
-  ;;TODO we don't sync contact/blocked for now, it requires more complex handling
-  (let [remove (update remote :system-tags disj :contact/blocked)
-        [old-contact new-contact] (sort-by :last-updated [remote local])]
-    (-> local
-        (merge new-contact)
-        (assoc :device-info (device-info/merge-info (:last-updated new-contact)
-                                                    (:device-info old-contact)
-                                                    (vals (:device-info new-contact)))
-               ;; we only take system tags from the newest contact version
-               :system-tags  (:system-tags new-contact)))))
-
-(def merge-contacts (partial merge-with merge-contact))
-
-(def multiaccount-mergeable-keys [:name :photo-path :last-updated])
-
-(defn merge-multiaccount [local remote]
-  (if (> (:last-updated remote) (:last-updated local))
-    (merge local (select-keys remote multiaccount-mergeable-keys))
-    local))
+  [cofx]
+  {::json-rpc/call [{:method (json-rpc/call-ext-method (waku/enabled? cofx) "sendPairInstallation")
+                     :params []
+                     :on-success #(log/info "sent pair installation message")}]})
 
 (fx/defn prompt-dismissed [{:keys [db]}]
   {:db (assoc-in db [:pairing/prompt-user-pop-up] false)})
@@ -124,66 +81,14 @@
 (fx/defn set-name
   "Set the name of the device"
   [{:keys [db] :as cofx} installation-name]
-  (let [fcm-token           (get-in cofx [:db :notifications :fcm-token])
-        our-installation-id (get-in db [:multiaccount :installation-id])]
-    {:pairing/set-installation-metadata [[our-installation-id {:name installation-name
-                                                               :deviceType utils.platform/os
-                                                               :fcmToken fcm-token}]]}))
+  (let [our-installation-id (get-in db [:multiaccount :installation-id])]
+    {:pairing/set-installation-metadata [(waku/enabled? cofx)
+                                         our-installation-id
+                                         {:name installation-name
+                                          :deviceType utils.platform/os}]}))
 
 (fx/defn init [cofx]
-  {:pairing/get-our-installations nil})
-
-(defn handle-bundles-added [{:keys [db] :as cofx} bundle]
-  (let [installation-id  (:installationID bundle)]
-    (when
-     (and (= (:identity bundle)
-             (multiaccounts.model/current-public-key cofx))
-          (not= (get-in db [:multiaccount :installation-id]) installation-id))
-      (fx/merge cofx
-                (init)
-                #(when-not (or (:pairing/prompt-user-pop-up db)
-                               (= :installations (:view-id db)))
-                   (prompt-user-on-new-installation %))))))
-
-(defn sync-installation-multiaccount-message [{:keys [db]}]
-  (let [multiaccount (-> db
-                         :multiaccount
-                         (select-keys multiaccount-mergeable-keys))]
-    (transport.pairing/SyncInstallation. {} multiaccount {})))
-
-(defn- contact->pairing [contact]
-  (cond-> (-> contact
-              (dissoc :photo-path)
-              (update :system-tags disj :contact/blocked))
-    ;; for compatibility with version < contact.v7
-    (contact.db/added? contact) (assoc :pending? false)
-    (contact.db/legacy-pending? contact) (assoc :pending? true)))
-
-(defn- contact-batch->sync-installation-message [batch]
-  (let [contacts-to-sync
-        (reduce (fn [acc {:keys [public-key system-tags] :as contact}]
-                  (assoc acc
-                         public-key
-                         (contact->pairing contact)))
-                {}
-                batch)]
-    (transport.pairing/SyncInstallation. contacts-to-sync {} {})))
-
-(defn- chats->sync-installation-messages [{:keys [db]}]
-  (->> db
-       :chats
-       vals
-       (filter :public?)
-       (filter :is-active)
-       (map #(select-keys % [:chat-id :public?]))
-       (map #(transport.pairing/SyncInstallation. {} {} %))))
-
-(defn sync-installation-messages [{:keys [db] :as cofx}]
-  (let [contacts (contact.db/get-active-contacts (:contacts/contacts db))
-        contact-batches (partition-all contact-batch-n contacts)]
-    (concat (mapv contact-batch->sync-installation-message contact-batches)
-            [(sync-installation-multiaccount-message cofx)]
-            (chats->sync-installation-messages cofx))))
+  {:pairing/get-our-installations (waku/enabled? cofx)})
 
 (fx/defn enable [{:keys [db]} installation-id]
   {:db (assoc-in db
@@ -215,169 +120,92 @@
   [result]
   (re-frame/dispatch [:pairing.callback/get-our-installations-success result]))
 
-(defn enable-installation! [installation-id]
-  (enable-installation-rpc installation-id
-                           (partial handle-enable-installation-response-success installation-id)
-                           nil))
+(defn enable-installation! [waku-enabled? installation-id]
+  (enable-installation-rpc
+   waku-enabled?
+   installation-id
+   (partial handle-enable-installation-response-success installation-id)
+   nil))
 
-(defn disable-installation! [installation-id]
-  (disable-installation-rpc installation-id
-                            (partial handle-disable-installation-response-success installation-id)
-                            nil))
+(defn disable-installation! [waku-enabled? installation-id]
+  (disable-installation-rpc
+   waku-enabled?
+   installation-id
+   (partial handle-disable-installation-response-success installation-id)
+   nil))
 
-(defn set-installation-metadata! [installation-id metadata]
-  (set-installation-metadata-rpc installation-id
-                                 metadata
-                                 (partial handle-set-installation-metadata-response-success installation-id metadata)
-                                 nil))
+(defn set-installation-metadata! [waku-enabled? installation-id metadata]
+  (set-installation-metadata-rpc
+   waku-enabled?
+   installation-id
+   metadata
+   (partial handle-set-installation-metadata-response-success installation-id metadata)
+   nil))
 
-(defn get-our-installations []
-  (get-our-installations-rpc handle-get-our-installations-response-success nil))
+(defn get-our-installations [waku-enabled?]
+  (get-our-installations-rpc waku-enabled? handle-get-our-installations-response-success nil))
 
 (defn enable-fx [cofx installation-id]
   (if (< (count (filter :enabled? (vals (get-in cofx [:db :pairing/installations])))) (inc config/max-installations))
-    {:pairing/enable-installation installation-id}
+    {:pairing/enable-installation [(waku/enabled? cofx) installation-id]}
     {:utils/show-popup {:title (i18n/label :t/pairing-maximum-number-reached-title)
 
                         :content (i18n/label :t/pairing-maximum-number-reached-content)}}))
 
-(defn disable-fx [_ installation-id]
-  {:pairing/disable-installation installation-id})
+(defn disable-fx [cofx installation-id]
+  {:pairing/disable-installation [(waku/enabled? cofx) installation-id]})
 
 (re-frame/reg-fx
  :pairing/enable-installation
- enable-installation!)
+ (fn [[waku-enabled? installation-id]]
+   (enable-installation! waku-enabled? installation-id)))
 
 (re-frame/reg-fx
  :pairing/disable-installation
- disable-installation!)
+ (fn [[waku-enabled? installation-id]]
+   (disable-installation! waku-enabled? installation-id)))
 
 (re-frame/reg-fx
  :pairing/set-installation-metadata
- (fn [pairs]
-   (doseq [[installation-id metadata] pairs]
-     (set-installation-metadata! installation-id metadata))))
+ (fn [[waku-enabled? installation-id metadata]]
+   (set-installation-metadata! waku-enabled? installation-id metadata)))
 
 (re-frame/reg-fx
  :pairing/get-our-installations
  get-our-installations)
 
-(fx/defn send-sync-installation
-  [cofx payload]
-  (let [current-public-key (multiaccounts.model/current-public-key cofx)]
-    {:shh/send-direct-message
-     [{:src     current-public-key
-       :dst     current-public-key
-       :payload payload}]}))
+(defn send-installation-messages [{:keys [db] :as cofx}]
+  (let [multiaccount (:multiaccount db)
+        {:keys [name preferred-name photo-path]} multiaccount]
+    {::json-rpc/call [{:method (json-rpc/call-ext-method (waku/enabled? cofx) "syncDevices")
+                       :params [(or preferred-name name) photo-path]
+                       :on-success #(log/debug "successfully synced devices")}]}))
 
-(fx/defn send-installation-message-fx [cofx payload]
-  (when (pairing.utils/has-paired-installations? cofx)
-    (protocol/send payload nil cofx)))
-
-(fx/defn sync-public-chat [cofx chat-id]
-  (let [sync-message (transport.pairing/SyncInstallation. {} {} {:public? true
-                                                                 :chat-id chat-id})]
-    (send-installation-message-fx cofx sync-message)))
-
-(fx/defn sync-contact
-  [cofx {:keys [public-key] :as contact}]
-  (let [sync-message (transport.pairing/SyncInstallation.
-                      {public-key (cond-> contact
-                                    ;; for compatibility with version < contact.v7
-                                    (contact.db/added? contact) (assoc :pending? false)
-                                    (contact.db/legacy-pending? contact) (assoc :pending? true))}
-                      {} {})]
-    (send-installation-message-fx cofx sync-message)))
-
-(defn send-installation-messages [cofx]
-  ;; The message needs to be broken up in chunks as we hit the whisper size limit
-  (let [sync-messages (sync-installation-messages cofx)
-        sync-messages-fx (map send-installation-message-fx sync-messages)]
-    (apply fx/merge cofx sync-messages-fx)))
-
-(defn ensure-photo-path
-  "Make sure a photo path is there, generate otherwise"
-  [contacts]
-  (reduce-kv (fn [acc k {:keys [public-key photo-path] :as v}]
-               (assoc acc k
-                      (assoc
-                       v
-                       :photo-path
-                       (if (string/blank? photo-path)
-                         (identicon/identicon public-key)
-                         photo-path))))
-             {}
-             contacts))
-
-(defn ensure-system-tags
-  "Make sure system tags is there"
-  [contacts]
-  (reduce-kv (fn [acc k {:keys [system-tags] :as v}]
-               (assoc acc k
-                      (assoc
-                       v
-                       :system-tags
-                       (if system-tags
-                         system-tags
-                         (if (and (contains? v :pending?) (not (:pending? v)))
-                           #{:contact/added}
-                           #{:contact/request-received})))))
-             {}
-             contacts))
-
-(defn handle-sync-installation
-  [{:keys [db] :as cofx} {:keys [contacts account chat]} sender]
-  (let [confirmation  (:metadata cofx)]
-    (if (= sender (multiaccounts.model/current-public-key cofx))
-      (let [on-success #(re-frame/dispatch [:message/messages-persisted [confirmation]])
-            new-contacts  (when (seq contacts)
-                            (vals (merge-contacts (:contacts/contacts db)
-                                                  ((comp ensure-photo-path
-                                                         ensure-system-tags) contacts))))
-            new-multiaccount   (merge-multiaccount (:multiaccount db) account)
-            contacts-fx   (when new-contacts (mapv contact/upsert-contact new-contacts))]
-        (apply fx/merge
-               cofx
-               (concat
-                [{:db                 (assoc db :multiaccount new-multiaccount)
-                  ::json-rpc/call
-                  [{:method "settings_saveConfig"
-                    :params ["multiaccount" (types/serialize new-multiaccount)]
-                    :on-success on-success}]}
-                 #(when (:public? chat)
-                    (models.chat/start-public-chat % (:chat-id chat) {:dont-navigate? true}))]
-                contacts-fx)))
-      (confirm-message-processed cofx confirmation))))
-
-(defn handle-pair-installation
-  [{:keys [db] :as cofx} {:keys [name
-                                 fcm-token
-                                 installation-id
-                                 device-type]} timestamp sender]
-  (if (and (= sender (multiaccounts.model/current-public-key cofx))
-           (not= (get-in db [:multiaccount :installation-id]) installation-id))
-    {:pairing/set-installation-metadata [[installation-id {:name name
-                                                           :deviceType device-type
-                                                           :fcmToken fcm-token}]]}
-    (confirm-message-processed cofx (:metadata cofx))))
+(defn installation<-rpc [{:keys [metadata id enabled]}]
+  {:installation-id id
+   :name (:name metadata)
+   :timestamp (:timestamp metadata)
+   :device-type (:deviceType metadata)
+   :enabled? enabled})
 
 (fx/defn update-installation [{:keys [db]} installation-id metadata]
   {:db (update-in db [:pairing/installations installation-id]
                   assoc
                   :installation-id installation-id
                   :name (:name metadata)
-                  :device-type (:deviceType metadata)
-                  :fcmToken (:fcmToken metadata))})
+                  :device-type (:deviceType metadata))})
+
+(fx/defn handle-installations [{:keys [db]} installations]
+  {:db (update db :pairing/installations #(reduce
+                                           (fn [acc {:keys [id] :as i}]
+                                             (update acc id merge (installation<-rpc i)))
+                                           %
+                                           installations))})
 
 (fx/defn load-installations [{:keys [db]} installations]
   {:db (assoc db :pairing/installations (reduce
-                                         (fn [acc {:keys [metadata id enabled] :as i}]
+                                         (fn [acc {:keys [id] :as i}]
                                            (assoc acc id
-                                                  {:installation-id id
-                                                   :name (:name metadata)
-                                                   :timestamp (:timestamp metadata)
-                                                   :device-type (:deviceType metadata)
-                                                   :fcm-token (:fcmToken metadata)
-                                                   :enabled? enabled}))
+                                                  (installation<-rpc i)))
                                          {}
                                          installations))})

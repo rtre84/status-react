@@ -1,22 +1,24 @@
 (ns status-im.utils.types
-  (:require [cognitect.transit :as transit]))
+  (:refer-clojure :exclude [js->clj])
+  (:require [cljs-bean.core :as clj-bean]))
 
 (defn to-string [s]
   (if (keyword? s)
     (name s)
     s))
 
+(defn js->clj [data]
+  (cljs.core/js->clj data :keywordize-keys true))
+
 (defn clj->json [data]
-  (.stringify js/JSON (clj->js data)))
+  (.stringify js/JSON (clj-bean/->js data)))
 
 (defn json->clj [json]
   (when-not (= json "undefined")
     (try
-      (js->clj (.parse js/JSON json) :keywordize-keys true)
+      (js->clj (.parse js/JSON json))
       (catch js/Error _ (when (string? json) json)))))
 
-(def reader (transit/reader :json))
-(def writer (transit/writer :json))
-
-(defn serialize [o] (transit/write writer o))
-(defn deserialize [o] (try (transit/read reader o) (catch :default e nil)))
+(def serialize clj->json)
+(defn deserialize [o] (try (json->clj o)
+                           (catch :default _ nil)))

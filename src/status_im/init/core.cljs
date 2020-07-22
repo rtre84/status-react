@@ -1,90 +1,68 @@
 (ns status-im.init.core
-  (:require [re-frame.core :as re-frame]
+  (:require [clojure.string :as string]
+            [re-frame.core :as re-frame]
             [status-im.multiaccounts.login.core :as multiaccounts.login]
             [status-im.native-module.core :as status]
             [status-im.network.net-info :as network]
-            [status-im.notifications.core :as notifications]
-            [status-im.react-native.js-dependencies :as rn-dependencies]
-            [status-im.ui.screens.db :refer [app-db]]
-            [status-im.ui.screens.navigation :as navigation]
+            [status-im.db :refer [app-db]]
             [status-im.utils.fx :as fx]
-            [status-im.utils.platform :as platform]
-            [clojure.string :as string]))
-
-(defn restore-native-settings! []
-  (when platform/desktop?
-    (.getValue rn-dependencies/desktop-config "logging_enabled"
-               #(re-frame/dispatch [:set-in [:desktop/desktop :logging-enabled]
-                                    (if (boolean? %)
-                                      %
-                                      (cljs.reader/read-string %))]))))
+            [status-im.theme.core :as theme]
+            [status-im.utils.theme :as utils.theme]))
 
 (fx/defn initialize-app-db
   "Initialize db to initial state"
-  [{{:keys [view-id hardwallet initial-props desktop/desktop
-            supported-biometric-auth push-notifications/stored network/type]} :db}]
+  [{{:keys [keycard initial-props supported-biometric-auth app-active-since]
+     :network/keys [type]} :db
+    now :now}]
   {:db (assoc app-db
               :initial-props initial-props
-              :desktop/desktop (merge desktop (:desktop/desktop app-db))
               :network/type type
-              :hardwallet (dissoc hardwallet :secrets)
+              :keycard (dissoc keycard :secrets)
               :supported-biometric-auth supported-biometric-auth
-              :view-id view-id
-              :push-notifications/stored stored)})
+              :app-active-since (or app-active-since now)
+              :multiaccounts/loading true)})
 
 (fx/defn initialize-views
-  [cofx]
-  (let [{{:multiaccounts/keys [multiaccounts] :as db} :db} cofx]
-    (if (empty? multiaccounts)
-      (navigation/navigate-to-cofx cofx :intro nil)
-      (let [multiaccount-with-notification
-            (when-not platform/desktop?
-              (notifications/lookup-contact-pubkey-from-hash
-               cofx
-               (first (keys (:push-notifications/stored db)))))
-            selection-fn
-            (if (not-empty multiaccount-with-notification)
-              #(filter (fn [multiaccount]
-                         (= multiaccount-with-notification
-                            (:public-key multiaccount)))
-                       %)
-              #(sort-by :last-sign-in > %))
-            {:keys [address public-key photo-path name]} (first (selection-fn (vals multiaccounts)))]
-        (multiaccounts.login/open-login cofx address photo-path name public-key)))))
+  {:events [::initialize-view]}
+  [cofx {:keys [logout?]}]
+  (let [{{:multiaccounts/keys [multiaccounts]} :db} cofx]
+    (when (and (seq multiaccounts) (not logout?))
+      (let [{:keys [key-uid public-key photo-path name]}
+            (first (sort-by :timestamp > (vals multiaccounts)))]
+        (multiaccounts.login/open-login cofx key-uid photo-path name public-key)))))
 
 (fx/defn initialize-multiaccounts
   {:events [::initialize-multiaccounts]}
-  [{:keys [db] :as cofx} all-multiaccounts]
-  (let [multiaccounts (reduce (fn [acc {:keys [address keycard-key-uid keycard-pairing] :as multiaccount}]
-                                (-> (assoc acc address multiaccount)
-                                    (assoc-in [address :keycard-key-uid] (when-not (string/blank? keycard-key-uid)
-                                                                           keycard-key-uid))
-                                    (assoc-in [address :keycard-pairing] (when-not (string/blank? keycard-pairing)
-                                                                           keycard-pairing))))
+  [{:keys [db] :as cofx} all-multiaccounts {:keys [logout?]}]
+  (let [multiaccounts (reduce (fn [acc {:keys [key-uid keycard-pairing]
+                                        :as   multiaccount}]
+                                (-> (assoc acc key-uid multiaccount)
+                                    (assoc-in [key-uid :keycard-pairing]
+                                              (when-not (string/blank? keycard-pairing)
+                                                keycard-pairing))))
                               {}
                               all-multiaccounts)]
     (fx/merge cofx
-              {:db (assoc db :multiaccounts/multiaccounts multiaccounts)}
-              (initialize-views))))
+              {:db             (-> db
+                                   (assoc :multiaccounts/multiaccounts multiaccounts)
+                                   (assoc :multiaccounts/logout? logout?)
+                                   (assoc :multiaccounts/loading false))
+               ;; NOTE: Try to dispatch later navigation because of that https://github.com/react-navigation/react-navigation/issues/6879
+               :dispatch-later [{:dispatch [::initialize-view {:logout? logout?}]
+                                 :ms       100}]})))
 
 (fx/defn start-app [cofx]
   (fx/merge cofx
             {:get-supported-biometric-auth          nil
-             ::init-keystore                        nil
-             ::restore-native-settings              nil
-             ::open-multiaccounts                   #(re-frame/dispatch [::initialize-multiaccounts %])
+             ::init-theme                           nil
+             ::open-multiaccounts                   #(re-frame/dispatch [::initialize-multiaccounts % {:logout? false}])
              :ui/listen-to-window-dimensions-change nil
-             :notifications/init                    nil
              ::network/listen-to-network-info       nil
-             :hardwallet/register-card-events       nil
-             :hardwallet/check-nfc-support          nil
-             :hardwallet/check-nfc-enabled          nil
-             :hardwallet/retrieve-pairings          nil}
+             :keycard/register-card-events       nil
+             :keycard/check-nfc-support          nil
+             :keycard/check-nfc-enabled          nil
+             :keycard/retrieve-pairings          nil}
             (initialize-app-db)))
-
-(re-frame/reg-fx
- ::restore-native-settings
- restore-native-settings!)
 
 (re-frame/reg-fx
  ::open-multiaccounts
@@ -92,6 +70,7 @@
    (status/open-accounts callback)))
 
 (re-frame/reg-fx
- ::init-keystore
+ ::init-theme
  (fn []
-   (status/init-keystore)))
+   (utils.theme/add-mode-change-listener #(re-frame/dispatch [:system-theme-mode-changed %]))
+   (theme/change-theme (if (utils.theme/is-dark-mode) :dark :light))))

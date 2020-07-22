@@ -1,4 +1,3 @@
-import time
 
 import emoji
 import random
@@ -23,36 +22,43 @@ class TestPublicChatMultipleDevice(MultipleDeviceTestCase):
         profile_1 = home_1.profile_button.click()
         default_username_1 = profile_1.default_username_text.text
         profile_1.home_button.click()
-        public_key_2 = home_2.get_public_key()
+        public_key_2 = home_2.get_public_key_and_username()
         home_2.home_button.click()
 
         home_1.add_contact(public_key_2)
         home_1.get_back_to_home_view()
 
-        public_chat_name = home_1.get_public_chat_name()
+        home_1.plus_button.click_until_presence_of_element(home_1.join_public_chat_button)
+        home_1.join_public_chat_button.click()
+        preselected_chats = ['#status', '#chitchat', '#defi', '#crypto', '#markets', '#dap-ps']
+        for chat in preselected_chats:
+            if not home_1.element_by_text(chat).is_element_displayed():
+                self.errors.append("'%s' text is not in the list of preselected chats" % chat)
+        home_1.element_by_text('#status').click()
+        status_chat = home_1.get_chat_view()
+        if not status_chat.chat_message_input.is_element_displayed():
+            self.errors.append('No redirect to chat if tap on #status chat')
+        status_chat.get_back_to_home_view()
+
+
+        public_chat_name = home_1.get_random_chat_name()
         chat_1, chat_2 = home_1.join_public_chat(public_chat_name), home_2.join_public_chat(public_chat_name)
 
         message = 'hello'
         chat_1.chat_message_input.send_keys(message)
         chat_1.send_message_button.click()
 
-        # chat_2.verify_message_is_under_today_text(message, self.errors)
-        # TODO: should be replaced with ens name after https://github.com/status-im/status-react/pull/8487
-        # full_username = '%s • %s' % (username_1, default_username_1)
         if chat_2.chat_element_by_text(message).username.text != default_username_1:
             self.errors.append("Default username '%s' is not shown next to the received message" % default_username_1)
 
-        # if chat_1.element_by_text_part(username_1).is_element_displayed():
-        #     self.errors.append("Username '%s' is shown for the sender" % username_1)
-
-        self.verify_no_errors()
+        self.errors.verify_no_errors()
 
     @marks.testrail_id(5386)
     @marks.high
     def test_public_chat_clear_history(self):
         self.create_drivers(2)
         device_1, device_2 = SignInView(self.drivers[0]), SignInView(self.drivers[1])
-        chat_name = device_1.get_public_chat_name()
+        chat_name = device_1.get_random_chat_name()
         for sign_in in device_1, device_2:
             home = sign_in.create_user()
             home.join_public_chat(chat_name)
@@ -89,7 +95,7 @@ class TestPublicChatMultipleDevice(MultipleDeviceTestCase):
         device_1, device_2 = SignInView(self.drivers[0]), SignInView(self.drivers[1])
         home_1, home_2 = device_1.create_user(), device_2.create_user()
 
-        chat_name = home_1.get_public_chat_name()
+        chat_name = home_1.get_random_chat_name()
         chat_1, chat_2 = home_1.join_public_chat(chat_name), home_2.join_public_chat(chat_name)
         home_1.get_back_to_home_view()
 
@@ -97,22 +103,52 @@ class TestPublicChatMultipleDevice(MultipleDeviceTestCase):
         chat_2.chat_message_input.send_keys(message)
         chat_2.send_message_button.click()
 
-        if home_1.home_button.counter.text != '1':
-            self.errors.append('New messages counter is not shown on Home button')
+        if not home_1.home_button.public_unread_messages.is_element_displayed():
+            self.errors.append('New messages public chat badge is not shown on Home button')
 
-        chat_element = home_1.get_chat_with_user('#' + chat_name)
-        if chat_element.new_messages_counter.text != '1':
-            self.errors.append('New messages counter is not shown on chat element')
+        chat_element = home_1.get_chat('#' + chat_name)
+        if not chat_element.new_messages_public_chat.is_element_displayed():
+            self.errors.append('New messages counter is not shown in public chat')
 
         chat_element.click()
         home_1.get_back_to_home_view()
 
-        if home_1.home_button.counter.is_element_displayed():
-            self.errors.append('New messages counter is shown on Home button for already seen message')
+        if home_1.home_button.public_unread_messages.is_element_displayed():
+            self.errors.append('New messages public chat badge is shown on Home button')
+        if chat_element.new_messages_public_chat.is_element_displayed():
+            self.errors.append('Unread messages badge is shown in public chat while while there are no unread messages')
 
-        if chat_element.new_messages_counter.is_element_displayed():
-            self.errors.append('New messages counter is shown on chat element for already seen message')
-        self.verify_no_errors()
+        self.errors.verify_no_errors()
+
+    @marks.testrail_id(6270)
+    @marks.medium
+    def test_mark_all_messages_as_read_public_chat(self):
+        self.create_drivers(2)
+        device_1, device_2 = SignInView(self.drivers[0]), SignInView(self.drivers[1])
+        home_1, home_2 = device_1.create_user(), device_2.create_user()
+        chat_name = home_1.get_random_chat_name()
+        chat_1, chat_2 = home_1.join_public_chat(chat_name), home_2.join_public_chat(chat_name)
+        home_1.get_back_to_home_view()
+        message = 'test message'
+        chat_2.chat_message_input.send_keys(message)
+        chat_2.send_message_button.click()
+
+        if not home_1.home_button.public_unread_messages.is_element_displayed():
+            self.errors.append('New messages public chat badge is not shown on Home button')
+        chat_element = home_1.get_chat('#' + chat_name)
+        if not chat_element.new_messages_public_chat.is_element_displayed():
+            self.errors.append('New messages counter is not shown in public chat')
+
+        chat_element.long_press_element()
+        home_1.mark_all_messages_as_read_button.click()
+        home_1.get_back_to_home_view()
+
+        if home_1.home_button.public_unread_messages.is_element_displayed():
+            self.errors.append('New messages public chat badge is shown on Home button')
+        if chat_element.new_messages_public_chat.is_element_displayed():
+            self.errors.append('Unread messages badge is shown in public chat while while there are no unread messages')
+
+        self.errors.verify_no_errors()
 
     @marks.testrail_id(6202)
     @marks.low
@@ -121,25 +157,24 @@ class TestPublicChatMultipleDevice(MultipleDeviceTestCase):
         device_1, device_2 = SignInView(self.drivers[0]), SignInView(self.drivers[1])
         home_1, home_2 = device_1.create_user(), device_2.create_user()
 
-        chat_name = home_1.get_public_chat_name()
+        chat_name = home_1.get_random_chat_name()
         chat_1, chat_2 = home_1.join_public_chat(chat_name), home_2.join_public_chat(chat_name)
         emoji_name = random.choice(list(emoji.EMOJI_UNICODE))
         emoji_unicode = emoji.EMOJI_UNICODE[emoji_name]
         chat_1.chat_message_input.send_keys(emoji.emojize(emoji_name))
         chat_1.send_message_button.click()
 
-        chat_1.chat_element_by_text(emoji_unicode).long_press_element()
+        chat_1.element_by_text_part(emoji_unicode).long_press_element()
         chat_1.element_by_text('Copy').click()
         chat_1.chat_message_input.paste_text_from_clipboard()
         if chat_1.chat_message_input.text != emoji_unicode:
             self.errors.append('Emoji message was not copied')
 
-        chat_element_2 = chat_2.chat_element_by_text(emoji_unicode)
+        chat_element_2 = chat_2.element_by_text_part(emoji_unicode)
         if not chat_element_2.is_element_displayed(sec=10):
             self.errors.append('Message with emoji was not received in public chat by the recipient')
 
-        chat_element_2.long_press_element()
-        chat_2.element_by_text('Reply').click()
+        chat_2.quote_message(emoji_unicode)
         message_text = 'test message'
         chat_2.chat_message_input.send_keys(message_text)
         chat_2.send_message_button.click()
@@ -147,64 +182,29 @@ class TestPublicChatMultipleDevice(MultipleDeviceTestCase):
         chat_element_1 = chat_1.chat_element_by_text(message_text)
         if not chat_element_1.is_element_displayed(sec=10) or chat_element_1.replied_message_text != emoji_unicode:
             self.errors.append('Reply message was not received by the sender')
-        self.verify_no_errors()
+        self.errors.verify_no_errors()
+
+    @marks.testrail_id(6275)
+    @marks.medium
+    def test_public_chat_messages_received_while_different_tab_opened(self):
+        self.create_drivers(2)
+        device_1, device_2 = SignInView(self.drivers[0]), SignInView(self.drivers[1])
+        home_1, home_2 = device_1.create_user(), device_2.create_user()
+        public_chat_name = home_1.get_random_chat_name()
+        chat_1, chat_2 = home_1.join_public_chat(public_chat_name), home_2.join_public_chat(public_chat_name)
+
+        browser = device_1.dapp_tab_button.click()
+        message = 'hello'
+        chat_2.send_message(message)
+
+        if home_1.home_button.public_unread_messages.is_element_displayed():
+            device_1.home_button.click_until_absense_of_element(browser.enter_url_editbox)
+        if not chat_1.chat_element_by_text(message).is_element_displayed():
+            self.driver.fail("No message if it received while another tab opened")
 
 
 @marks.chat
 class TestPublicChatSingleDevice(SingleDeviceTestCase):
-
-    @marks.skip
-    @marks.testrail_id(5392)
-    @marks.high
-    # TODO: update to use korean keyboard
-    def test_send_korean_characters(self):
-        sign_in = SignInView(self.driver)
-        home = sign_in.create_user()
-        chat_name = home.get_public_chat_name()
-        public_chat = home.join_public_chat(chat_name)
-        message = '파란하늘'
-        public_chat.chat_message_input.send_keys(message)
-        if public_chat.chat_message_input.text != message:
-            self.errors.append('Korean characters are not displayed properly in the chat message input')
-        public_chat.send_message_button.click()
-        if not public_chat.chat_element_by_text(message).is_element_displayed():
-            self.errors.append('Message with korean characters is not shown')
-        self.verify_no_errors()
-
-    @marks.skip
-    @marks.testrail_id(5336)
-    @marks.medium
-    # skipped as it is a part of other tests
-    def test_user_can_interact_with_public_chat(self):
-        signin = SignInView(self.driver)
-        home_view = signin.create_user()
-        chat = home_view.join_public_chat('evripidis-middellijn')
-
-        try:
-            chat.empty_public_chat_message.wait_for_invisibility_of_element()
-        except TimeoutException:
-            self.driver.fail('Empty chat: history is not fetched!')
-
-        # just to generate random text to be sent
-        text = generate_timestamp()
-        chat.send_message(text)
-
-        if not chat.chat_element_by_text(text).is_element_displayed():
-            self.errors.append('User sent message but it did not appear in chat!')
-
-        chat.move_to_messages_by_time_marker('Today')
-        if not chat.element_by_text('Today').is_element_displayed():
-            self.errors.append("'Today' chat marker is not shown")
-        if len(chat.chat_item.find_elements()) <= 1:
-            self.errors.append('No messages fetched for today!')
-
-        chat.move_to_messages_by_time_marker('Yesterday')
-        if not chat.element_by_text('Yesterday').is_element_displayed():
-            self.errors.append("'Yesterday' chat marker is not shown")
-        if len(chat.chat_item.find_elements()) <= 1:
-            self.errors.append('No messages fetched for yesterday!')
-
-        self.verify_no_errors()
 
     @marks.testrail_id(5675)
     @marks.high
@@ -215,12 +215,14 @@ class TestPublicChatSingleDevice(SingleDeviceTestCase):
         tag_message = '#spectentur'
         chat.send_message(tag_message)
         chat.element_starts_with_text(tag_message).click()
-        time.sleep(4)
+        chat.element_by_text_part('montagne-angerufen').wait_for_invisibility_of_element()
         if not chat.user_name_text.text == tag_message:
             self.driver.fail('Could not redirect a user to a public chat tapping the tag message.')
-        home = chat.get_back_to_home_view()
-        if not home.chat_name_text.text == tag_message:
+        home_view = chat.get_back_to_home_view()
+        if not home_view.element_by_text(tag_message).is_element_displayed():
             self.driver.fail('Could not find the public chat in user chat list.')
+        #if not home_view.chat_name_text.text == tag_message:
+
 
     @marks.testrail_id(6205)
     @marks.high
@@ -240,4 +242,4 @@ class TestPublicChatSingleDevice(SingleDeviceTestCase):
         for message in (before_yesterday, quiet_time_before_yesterday):
             if not chat.element_by_text_part(message).is_element_displayed():
                 self.driver.fail('"%s" is not shown' % message)
-        self.verify_no_errors()
+        self.errors.verify_no_errors()

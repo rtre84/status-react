@@ -1,7 +1,6 @@
 (ns status-im.utils.fx
   (:require-macros status-im.utils.fx)
-  (:require [clojure.set :as set]
-            [status-im.ethereum.json-rpc :as json-rpc]
+  (:require [status-im.ethereum.json-rpc :as json-rpc]
             [taoensso.timbre :as log]
             status-im.utils.handlers)
   (:refer-clojure :exclude [merge reduce]))
@@ -12,13 +11,11 @@
     cofx))
 
 (def ^:private mergeable-keys
-  #{:chat-received-message/add-fx
-    :filters/load-filters
+  #{:filters/load-filters
     :pairing/set-installation-metadata
-    :status-im.data-store.messages/save-message
+    :status-im.ens.core/verify-names
     :shh/send-direct-message
     :shh/remove-filter
-    :shh/generate-sym-key-from-password
     :transport/confirm-messages-processed
     :group-chats/extract-membership-signature
     :utils/dispatch-later

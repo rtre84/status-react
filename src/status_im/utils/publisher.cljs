@@ -1,13 +1,12 @@
 (ns status-im.utils.publisher
   (:require [re-frame.core :as re-frame]
             [re-frame.db]
-            [status-im.multiaccounts.update.publisher :as multiaccounts]
             [status-im.utils.async :as async-util]
-            [status-im.utils.datetime :as datetime]
+            [status-im.mailserver.core :as mailserver]
             [status-im.utils.fx :as fx]))
 
 (defonce polling-executor (atom nil))
-(def sync-interval-ms 120000)
+(def sync-interval-ms 10000)
 (def sync-timeout-ms  20000)
 
 (defn- start-publisher! []
@@ -16,10 +15,8 @@
   (reset! polling-executor
           (async-util/async-periodic-exec
            (fn [done-fn]
-             (let [cofx {:now  (datetime/timestamp)
-                         :db   @re-frame.db/app-db}]
-               (multiaccounts/publish-update! cofx)
-               (done-fn)))
+             (mailserver/check-connection!)
+             (done-fn))
            sync-interval-ms
            sync-timeout-ms)))
 
@@ -33,9 +30,9 @@
     (async-util/async-periodic-stop! @polling-executor)))
 
 (fx/defn start-fx
-  [cofx]
+  [_]
   {::start-publisher nil})
 
 (fx/defn stop-fx
-  [cofx]
+  [_]
   {::stop-publisher []})

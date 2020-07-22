@@ -1,4 +1,4 @@
-from views.base_element import BaseButton, BaseEditBox
+from views.base_element import BaseButton, BaseEditBox, BaseElement
 from views.base_view import BaseView
 from views.home_view import ChatElement
 
@@ -22,6 +22,15 @@ class EnterUrlEditbox(BaseEditBox):
     def __init__(self, driver):
         super(EnterUrlEditbox, self).__init__(driver)
         self.locator = self.Locator.accessibility_id('dapp-url-input')
+
+class EditUrlEditbox(BaseEditBox):
+    def __init__(self, driver):
+        super(EditUrlEditbox, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector('(//android.widget.TextView)[1]')
+
+    @property
+    def text(self):
+        return self.find_element().text
 
 
 class BrowserEntry(ChatElement):
@@ -63,6 +72,11 @@ class SelectAccountRadioButton(BaseButton):
         super(SelectAccountRadioButton, self).__init__(driver)
         self.locator = self.Locator.xpath_selector("//*[@text='%s']/../../android.view.ViewGroup/android.view.ViewGroup[2]" % account_name)
 
+class SetPrimaryUsername(BaseButton):
+    def __init__(self, driver):
+        super(SetPrimaryUsername, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('not-primary-username')
+
 
 class AlwaysAllowRadioButton(BaseButton):
     def __init__(self, driver):
@@ -76,13 +90,22 @@ class CrossCloseWeb3PermissionButton(BaseButton):
         self.locator = self.Locator.xpath_selector(
             '//*[contains(@text,"ÐApps can access")]/../android.view.ViewGroup[1]/android.view.ViewGroup')
 
+
+class WebViewPageElement(BaseElement):
+    def __init__(self, driver):
+        super(WebViewPageElement, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector('(//android.webkit.WebView)[1]')
+
+
 class DappsView(BaseView):
 
     def __init__(self, driver):
         super(DappsView, self).__init__(driver)
 
         self.enter_url_editbox = EnterUrlEditbox(self.driver)
+        self.edit_url_editbox = EditUrlEditbox(self.driver)
         self.discover_dapps_button = DiscoverDappsButton(self.driver)
+        self.web_page = WebViewPageElement(self.driver)
 
         #ens dapp
         self.ens_name = EnsName(self.driver)
@@ -99,7 +122,6 @@ class DappsView(BaseView):
         #permissions window
         self.always_allow_radio_button = AlwaysAllowRadioButton(self.driver)
         self.close_web3_permissions_window_button = CrossCloseWeb3PermissionButton(self.driver)
-
 
     def open_url(self, url):
         self.enter_url_editbox.click()
@@ -119,3 +141,7 @@ class DappsView(BaseView):
 
     def select_account_by_name(self, account_name='Status account'):
         return SelectAccountRadioButton(self.driver, account_name)
+
+    def set_primary_ens_username(self, ens_name):
+        self.driver.info("Set {} as primary ENS name".format(ens_name))
+        return SetPrimaryUsername(self.driver)

@@ -1,11 +1,9 @@
-{ stdenv, target-os, callPackage, mkShell, makeWrapper,
-  bundlerEnv, bundler, ruby, curl }:
+{ lib, stdenv, callPackage, mkShell,
+  bundlerEnv, cocoapods, bundler, ruby, curl }:
 
 let
-  inherit (stdenv.lib) optionals optionalString unique;
+  inherit (lib) optionals optionalString unique;
 
-  platform = callPackage ../../platform.nix { inherit target-os; };
-  useFastlanePkg = platform.targetAndroid && !stdenv.isDarwin;
   fastlane = callPackage ../../../fastlane {
     bundlerEnv = _:
       bundlerEnv {
@@ -13,23 +11,18 @@ let
         gemdir = ../../../fastlane;
       };
   };
-  bundlerDeps = optionals platform.targetMobile [
-    bundler
-    ruby
-  ]; # bundler/ruby used for fastlane on macOS
-  shellHook = optionalString useFastlanePkg fastlane.shellHook;
 
-  # TARGETS
-  shell = mkShell {
-    buildInputs = if useFastlanePkg then [ fastlane curl ] else bundlerDeps;
-    inherit shellHook;
-  };
+  inherit (fastlane) shellHook;
 
+  buildInputs = [ ruby bundler fastlane curl ]
+    ++ optionals stdenv.isDarwin [ cocoapods ];
 in {
-  # We only include bundler in regular shell if targetting iOS, because that's how the CI builds the whole project 
-  buildInputs = unique (optionals (!useFastlanePkg && platform.targetIOS) bundlerDeps);
-  inherit shellHook;
+  # HELPERS
+  inherit shellHook buildInputs;
 
   # TARGETS
-  inherit shell;
+  drv = fastlane;
+  shell = mkShell {
+    inherit shellHook buildInputs;
+  };
 }

@@ -115,11 +115,12 @@ class BaseElement(object):
             try:
                 return self.find_element()
             except NoSuchElementException:
-                self.driver.info('Scrolling down to %s' % self.name)
+                self.driver.info('Scrolling %s to %s' % (direction, self.name))
+                size = self.driver.get_window_size()
                 if direction == 'down':
-                    self.driver.swipe(500, 1000, 500, 500)
+                    self.driver.swipe(500, size["height"]*0.4, 500, size["height"]*0.05)
                 else:
-                    self.driver.swipe(500, 500, 500, 1000)
+                    self.driver.swipe(500, size["height"]*0.25, 500, size["height"]*0.8)
         else:
             raise NoSuchElementException(
                 "Device %s: '%s' is not found on the screen" % (self.driver.number, self.name)) from None
@@ -167,6 +168,11 @@ class BaseElement(object):
             attribute_state = attribute_value
         return attribute_state
 
+    # Method-helper for renew screenshots in case if changed
+    def save_new_screenshot_of_element(self, full_path_to_file: str):
+        screen = Image.open(BytesIO(base64.b64decode(self.find_element().screenshot_as_base64)))
+        screen.save(full_path_to_file)
+
     def is_element_image_equals_template(self, file_name: str = ''):
         if file_name:
             self.template = file_name
@@ -179,11 +185,11 @@ class BaseElement(object):
         width, height = size['width'], size['height']
         self.driver.swipe(start_x=x + width * 0.75, start_y=y + height / 2, end_x=x, end_y=y + height / 2)
 
-    def swipe_to_web_element(self):
+    def swipe_to_web_element(self, depth=700):
         element = self.find_element()
         location = element.location
         x, y = location['x'], location['y']
-        self.driver.swipe(start_x=x, start_y=y, end_x=x, end_y=400)
+        self.driver.swipe(start_x=x, start_y=y, end_x=x, end_y=depth)
 
     def long_press_element(self):
         element = self.find_element()
@@ -235,7 +241,7 @@ class BaseEditBox(BaseElement):
         action = TouchAction(self.driver)
         location = self.find_element().location
         x, y = location['x'], location['y']
-        action.press(x=x + 100, y=y - 50).release().perform()
+        action.press(x=x + 25, y=y - 50).release().perform()
 
     def cut_text(self):
         self.driver.info('Cut text in %s' % self.name)
@@ -269,7 +275,7 @@ class BaseButton(BaseElement):
         self.driver.info('Tap on %s' % self.name)
         return self.navigate()
 
-    def click_until_presence_of_element(self, desired_element, attempts=3):
+    def click_until_presence_of_element(self, desired_element, attempts=4):
         counter = 0
         while not desired_element.is_element_present(1) and counter <= attempts:
             try:
@@ -280,3 +286,16 @@ class BaseButton(BaseElement):
                 return self.navigate()
             except (NoSuchElementException, TimeoutException):
                 counter += 1
+        else:
+            self.driver.info("%s element not found" % desired_element.name)
+
+    def click_until_absense_of_element(self, desired_element, attempts=3):
+        counter = 0
+        while desired_element.is_element_present(1) and counter <= attempts:
+            try:
+                self.driver.info('Tap on %s' % self.name)
+                self.find_element().click()
+                self.driver.info('Wait for %s' % desired_element.name)
+                counter += 1
+            except (NoSuchElementException, TimeoutException):
+                return self.navigate()

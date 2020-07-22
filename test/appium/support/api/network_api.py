@@ -6,37 +6,51 @@ import requests
 import time
 from json import JSONDecodeError
 from decimal import Decimal
+from os import environ
+import tests
 
 
 class NetworkApi(object):
 
     def __init__(self):
-        self.network_url = 'http://api-%s.etherscan.io/api?' % pytest.config.getoption('network')
+        self.network_url = 'http://api-%s.etherscan.io/api?' % tests.pytest_config_global['network']
         self.faucet_url = 'https://faucet-ropsten.status.im/donate'
         self.faucet_backup_url = 'https://faucet.ropsten.be/donate'
         self.headers = {
         'User-Agent':"Mozilla\/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit\
         /537.36 (KHTML, like Gecko) Chrome\/77.0.3865.90 Safari\/537.36", }
         self.chat_bot_url = 'http://offsite.chat:8099'
+        self.api_key = environ.get('ETHERSCAN_API_KEY')
+
+    def log(self, text: str):
+        tests.test_suite_data.current_test.testruns[-1].steps.append(text)
+        logging.info(text)
 
     def get_transactions(self, address: str) -> List[dict]:
-        method = self.network_url + 'module=account&action=txlist&address=0x%s&sort=desc' % address
-        return requests.request('GET', url=method, headers=self.headers).json()['result']
+        method = self.network_url + 'module=account&action=txlist&address=0x%s&sort=desc&apikey=%s' % (address, self.api_key)
+        try:
+            return requests.request('GET', url=method, headers=self.headers).json()['result']
+        except TypeError as e:
+            self.log("Check response from etherscan API. Returned values do not match expected. %s" % e)
 
     def get_token_transactions(self, address: str) -> List[dict]:
-        method = self.network_url + 'module=account&action=tokentx&address=0x%s&sort=desc' % address
-        return requests.request('GET', url=method, headers=self.headers).json()['result']
+        method = self.network_url + 'module=account&action=tokentx&address=0x%s&sort=desc&apikey=%s' % (address, self.api_key)
+        try:
+            return requests.request('GET', url=method, headers=self.headers).json()['result']
+        except TypeError as e:
+            self.log("Check response from etherscan API. Returned values do not match expected. %s" % e)
 
     def is_transaction_successful(self, transaction_hash: str) -> int:
         method = self.network_url + 'module=transaction&action=getstatus&txhash=%s' % transaction_hash
         return not int(requests.request('GET', url=method, headers=self.headers).json()['result']['isError'])
 
     def get_balance(self, address):
-        method = self.network_url + 'module=account&action=balance&address=0x%s&tag=latest' % address
+        method = self.network_url + 'module=account&action=balance&address=0x%s&tag=latest&apikey=%s' % (address , self.api_key)
         for i in range(5):
             try:
                 return int(requests.request('GET', method, headers=self.headers).json()["result"])
             except ValueError:
+                time.sleep(5)
                 pass
 
     def get_latest_block_number(self) -> int:
@@ -55,6 +69,9 @@ class NetworkApi(object):
         counter = 0
         while True:
             if counter >= wait_time:
+                for entry in range(0,5):
+                    self.log('Transaction #%s, amount is %s' %(entry+1, float(int(transactions[entry]['value']) / 10 ** decimals)))
+                    self.log(str(transactions[entry]))
                 pytest.fail(
                     'Transaction with amount %s is not found in list of transactions, address is %s' %
                     (amount, address))
@@ -66,22 +83,27 @@ class NetworkApi(object):
                         transactions = self.get_token_transactions(address)
                     else:
                         transactions = self.get_transactions(address)
-                except JSONDecodeError:
+                except JSONDecodeError as e:
+                    self.log(str(e))
                     continue
-                logging.info('Looking for a transaction with unique amount %s in list of transactions, address is %s' %
+                self.log('Looking for a transaction with unique amount %s in list of transactions, address is %s' %
                              (amount, address))
-                for transaction in transactions:
-                    if float(int(transaction['value']) / 10 ** decimals) == float(amount):
-                        logging.info(
-                            'Transaction with unique amount %s is found in list of transactions, address is %s' %
-                            (amount, address))
-                        return transaction
+                try:
+                    for transaction in transactions:
+                        if float(int(transaction['value']) / 10 ** decimals) == float(amount):
+                            self.log(
+                                'Transaction with unique amount %s is found in list of transactions, address is %s' %
+                                (amount, address))
+                            return transaction
+                except TypeError as e:
+                    self.log("Failed iterate transactions " + str(e))
+                    continue
 
-    def wait_for_confirmation_of_transaction(self, address, amount):
+    def wait_for_confirmation_of_transaction(self, address, amount, confirmations=12, token=False):
         start_time = time.time()
         while round(time.time() - start_time, ndigits=2) < 900:  # should be < idleTimeout capability
-            transaction = self.find_transaction_by_unique_amount(address, amount)
-            if int(transaction['confirmations']) >= 12:
+            transaction = self.find_transaction_by_unique_amount(address, amount, token)
+            if int(transaction['confirmations']) >= confirmations:
                 return
             time.sleep(10)
         pytest.fail('Transaction with amount %s was not confirmed, address is %s' % (amount, address))
@@ -94,9 +116,9 @@ class NetworkApi(object):
             elif initial_balance == self.get_balance(recipient_address):
                 counter += 10
                 time.sleep(10)
-                logging.info('Waiting %s seconds for funds' % counter)
+                self.log('Waiting %s seconds for funds' % counter)
             else:
-                logging.info('Transaction is received')
+                self.log('Transaction is received')
                 return
 
     def verify_balance_is(self, expected_balance: int, recipient_address: str, errors: list):
@@ -110,11 +132,12 @@ class NetworkApi(object):
     def faucet_backup(self, address):
         return requests.request('GET', '%s/0x%s' % (self.faucet_backup_url, address)).json()
 
-    def get_donate(self, address, wait_time=300):
+    def get_donate(self, address, external_faucet=True, wait_time=300):
         initial_balance = self.get_balance(address)
         counter = 0
         if initial_balance < 1000000000000000000:
-            self.faucet_backup(address)
+            if external_faucet:
+                self.faucet_backup(address)
             response = self.faucet(address)
             while True:
                 if counter >= wait_time:
@@ -122,9 +145,9 @@ class NetworkApi(object):
                 elif self.get_balance(address) == initial_balance:
                     counter += 10
                     time.sleep(10)
-                    logging.info('Waiting %s seconds for donation' % counter)
+                    self.log('Waiting %s seconds for donation' % counter)
                 else:
-                    logging.info('Got %s for %s' % (response["amount_eth"], address))
+                    self.log('Got %s for %s' % (response["amount_eth"], address))
                     return
 
     def start_chat_bot(self, chat_name: str, messages_number: int, interval: int = 1) -> list:

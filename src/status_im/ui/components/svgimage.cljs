@@ -1,9 +1,8 @@
 (ns status-im.ui.components.svgimage
   (:require [status-im.ui.components.react :as react]
             [reagent.core :as reagent]
-            [status-im.utils.platform :as platform]
             [status-im.utils.http :as http]
-            [status-im.ui.components.webview-bridge :as components.webview-bridge]))
+            [status-im.ui.components.webview :as components.webview]))
 
 (defn html [uri width height]
   (str
@@ -45,8 +44,8 @@
     (when (and source uri (http/url-sanitized? uri))
       (fn []
         [react/view {:style     style
-                     :on-layout #(reset! width (-> % .-nativeEvent .-layout .-width))}
-         [components.webview-bridge/webview-bridge
+                     :on-layout #(reset! width (-> ^js % .-nativeEvent .-layout .-width))}
+         [components.webview/webview
           {:java-script-enabled         false
            :third-party-cookies-enabled false
            :scroll-enabled              false

@@ -1,13 +1,12 @@
 (ns status-im.utils.keychain.core
   (:require [re-frame.core :as re-frame]
             [taoensso.timbre :as log]
-            [status-im.react-native.js-dependencies :as rn]
             [status-im.utils.platform :as platform]
             [status-im.utils.security :as security]
             [status-im.native-module.core :as status]
             [status-im.utils.fx :as fx]
-            [goog.object :as object]
-            [clojure.string :as string]))
+            [clojure.string :as string]
+            ["react-native-keychain" :as react-native-keychain]))
 
 (defn- check-conditions [callback & checks]
   (if (= (count checks) 0)
@@ -30,9 +29,7 @@
 ;; to an address (`server`) property.
 
 (defn enum-val [enum-name value-name]
-  (-> rn/keychain
-      (object/get enum-name)
-      (object/get value-name)))
+  (get-in (js->clj react-native-keychain) [enum-name value-name]))
 
 ;; We need a more strict access mode for keychain entries that save user password.
 ;; iOS
@@ -54,7 +51,7 @@
   ;; Note that the password won't be stored if the device isn't locked by a passcode.
   #js {:accessible (enum-val "ACCESSIBLE" "WHEN_PASSCODE_SET_THIS_DEVICE_ONLY")})
 
-(def ^:const keychain-secure-hardware
+(def keychain-secure-hardware
   ;; (Android) Requires storing the encryption key for the entry in secure hardware
   ;; or StrongBox (see https://developer.android.com/training/articles/keystore#ExtractionPrevention)
   "SECURE_HARDWARE")
@@ -67,17 +64,23 @@
 
 ;; Android only
 (defn- secure-hardware-available? [callback]
-  (-> (.getSecurityLevel rn/keychain)
+  (-> (.getSecurityLevel react-native-keychain)
       (.then (fn [level] (callback (= level keychain-secure-hardware))))))
 
 ;; iOS only
 (defn- device-encrypted? [callback]
   (-> (.canImplyAuthentication
-       rn/keychain
-       #js {:authenticationType (enum-val "ACCESS_CONTROL" "BIOMETRY_ANY_OR_DEVICE_PASSCODE")})
+       react-native-keychain
+       (clj->js
+        {:authenticationType
+         (enum-val "ACCESS_CONTROL" "BIOMETRY_ANY_OR_DEVICE_PASSCODE")}))
       (.then callback)))
 
+(defn- whisper-key-name [address]
+  (str address "-whisper"))
+
 (defn can-save-user-password? [callback]
+  (log/debug "[keychain] can-save-user-password?")
   (cond
     platform/ios?
     (check-conditions callback device-encrypted?)
@@ -91,38 +94,63 @@
 (defn save-credentials
   "Stores the credentials for the address to the Keychain"
   [server username password callback]
-  (-> (.setInternetCredentials rn/keychain (string/lower-case server) username password
+  (log/debug "[keychain] save-credentials")
+  (-> (.setInternetCredentials react-native-keychain
+                               (string/lower-case server) username password
                                keychain-secure-hardware keychain-restricted-availability)
       (.then callback)))
 
 (defn get-credentials
   "Gets the credentials for a specified server from the Keychain"
   [server callback]
-  (if platform/mobile?
-    (-> (.getInternetCredentials rn/keychain (string/lower-case server))
-        (.then callback))
-    (callback))) ;; no-op for Desktop
+  (log/debug "[keychain] get-credentials")
+  (-> (.getInternetCredentials react-native-keychain (string/lower-case server))
+      (.then callback)))
+
+(def auth-method-password "password")
+(def auth-method-biometric "biometric")
+(def auth-method-biometric-prepare "biometric-prepare")
+(def auth-method-none "none")
 
 (re-frame/reg-fx
  :keychain/get-auth-method
- (fn [[address callback]]
+ (fn [[key-uid callback]]
    (can-save-user-password?
     (fn [can-save?]
       (if can-save?
-        (get-credentials (str address "-auth") #(callback (if % (.-password %) "none")))
+        (get-credentials (str key-uid "-auth")
+                         #(callback (if %
+                                      (.-password ^js %)
+                                      auth-method-none)))
         (callback nil))))))
 
 (re-frame/reg-fx
  :keychain/get-user-password
- (fn [[address callback]]
-   (get-credentials address #(if % (callback (security/mask-data (.-password %))) (callback nil)))))
+ (fn [[key-uid callback]]
+   (get-credentials key-uid #(if % (callback (security/mask-data (.-password ^js %))) (callback nil)))))
+
+(re-frame/reg-fx
+ :keychain/get-keycard-keys
+ (fn [[key-uid callback]]
+   (get-credentials
+    key-uid
+    (fn [^js encryption-key-data]
+      (if encryption-key-data
+        (get-credentials
+         (whisper-key-name key-uid)
+         (fn [^js whisper-key-data]
+           (if whisper-key-data
+             (callback [(.-password encryption-key-data)
+                        (.-password whisper-key-data)])
+             (callback nil))))
+        (callback nil))))))
 
 (re-frame/reg-fx
  :keychain/save-user-password
- (fn [[address password]]
+ (fn [[key-uid password]]
    (save-credentials
-    address
-    address
+    key-uid
+    key-uid
     (security/safe-unmask-data password)
     #(when-not %
        (log/error
@@ -133,10 +161,12 @@
 
 (re-frame/reg-fx
  :keychain/save-auth-method
- (fn [[address method]]
+ (fn [[key-uid method]]
+   (log/debug "[keychain] :keychain/save-auth-method"
+              "method" method)
    (save-credentials
-    (str address "-auth")
-    address
+    (str key-uid "-auth")
+    key-uid
     method
     #(when-not %
        (log/error
@@ -146,27 +176,58 @@
              "but you will have to login again next time you launch it."))))))
 
 (re-frame/reg-fx
+ :keychain/save-keycard-keys
+ (fn [[key-uid encryption-public-key whisper-private-key]]
+   (save-credentials
+    key-uid
+    key-uid
+    encryption-public-key
+    #(when-not %
+       (log/error
+        (str "Error while saving encryption-public-key"))))
+   (save-credentials
+    (whisper-key-name key-uid)
+    key-uid
+    whisper-private-key
+    #(when-not %
+       (log/error
+        (str "Error while saving whisper-private-key"))))))
+
+(re-frame/reg-fx
  :keychain/clear-user-password
- (fn [address]
-   (when platform/mobile?
-     (-> (.resetInternetCredentials rn/keychain (string/lower-case address))
-         (.then #(when-not % (log/error (str "Error while clearing saved password."))))))))
+ (fn [key-uid]
+   (-> (.resetInternetCredentials react-native-keychain (string/lower-case key-uid))
+       (.then #(when-not % (log/error (str "Error while clearing saved password.")))))))
 
 (fx/defn get-auth-method
-  [_ address]
+  [_ key-uid]
   {:keychain/get-auth-method
-   [address #(re-frame/dispatch [:multiaccounts.login/get-auth-method-success % address])]})
+   [key-uid #(re-frame/dispatch [:multiaccounts.login/get-auth-method-success % key-uid])]})
 
 (fx/defn get-user-password
-  [_ address]
+  [_ key-uid]
   {:keychain/get-user-password
-   [address #(re-frame/dispatch [:multiaccounts.login.callback/get-user-password-success % address])]})
+   [key-uid
+    #(re-frame/dispatch
+      [:multiaccounts.login.callback/get-user-password-success % key-uid])]})
+
+(fx/defn get-keycard-keys
+  [_ key-uid]
+  {:keychain/get-keycard-keys
+   [key-uid
+    #(re-frame/dispatch
+      [:multiaccounts.login.callback/get-keycard-keys-success key-uid %])]})
 
 (fx/defn save-user-password
-  [cofx address password]
-  {:keychain/save-user-password [address password]})
+  [_ key-uid password]
+  {:keychain/save-user-password [key-uid password]})
 
+(fx/defn save-keycard-keys
+  [_ key-uid encryption-public-key whisper-private-key]
+  {:keychain/save-keycard-keys [key-uid
+                                encryption-public-key
+                                whisper-private-key]})
 (fx/defn save-auth-method
-  [{:keys [db]} address method]
+  [{:keys [db]} key-uid method]
   {:db                        (assoc db :auth-method method)
-   :keychain/save-auth-method [address method]})
+   :keychain/save-auth-method [key-uid method]})

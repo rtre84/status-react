@@ -1,16 +1,10 @@
-# target-os = [ 'windows' 'linux' 'macos' 'darwin' 'android' 'ios' 'all' ]
-{ config ? { android_sdk.accept_license = true; },
-  nixpkgs-bootstrap ? import ./nix/nixpkgs-bootstrap.nix { inherit config; },
-  pkgs ? nixpkgs-bootstrap.pkgs,
-  stdenv ? pkgs.stdenv,
-  target-os ? "none" }:
+# for passing build options, see nix/README.md
+{ config ? { } }:
 
-let deriv = pkgs.callPackage ./nix/derivation.nix { inherit pkgs target-os; inherit (nixpkgs-bootstrap) config; };
-
+let
+  main = import ./nix { inherit config; };
 in {
-  targets = {
-    inherit (deriv) mobile leiningen watchman status-go;
-  };
-
-  inherit (deriv) shell;
+  # this is where the --attr argument selects the shell or target
+  inherit (main) pkgs targets shells;
+  inherit (main.pkgs) config;
 }

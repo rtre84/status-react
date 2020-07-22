@@ -4,44 +4,26 @@
             [re-frame.core :as re-frame]
             [status-im.multiaccounts.core :as multiaccounts]
             [status-im.ui.components.colors :as colors]
-            [status-im.ui.components.animation :as anim]
-            [reagent.core :as reagent]
-            [status-im.ui.components.list-item.views :as list-item]
-            [status-im.ui.components.button :as button]
             [status-im.ui.components.copyable-text :as copyable-text]
             [status-im.wallet.utils :as wallet.utils]
             [status-im.ui.components.list.views :as list]
+            [status-im.keycard.common :as keycard.common]
+            [status-im.ui.screens.keycard.keycard-interaction :as keycard-sheet]
             [status-im.ui.components.chat-icon.screen :as chat-icon]
             [status-im.ui.components.icons.vector-icons :as icons]
-            [status-im.ui.components.text-input.view :as text-input]
             [status-im.i18n :as i18n]
             [status-im.utils.security :as security]
             [status-im.ui.screens.signing.sheets :as sheets]
             [status-im.ethereum.tokens :as tokens]
             [clojure.string :as string]
+            [quo.core :as quo]
             [status-im.ui.screens.signing.styles :as styles]
             [status-im.react-native.resources :as resources]
-            [status-im.ui.screens.hardwallet.pin.views :as pin.views]))
-
-(defn hide-panel-anim
-  [bottom-anim-value alpha-value window-height]
-  (anim/start
-   (anim/parallel
-    [(anim/spring bottom-anim-value {:toValue         (- window-height)
-                                     :useNativeDriver true})
-     (anim/timing alpha-value {:toValue         0
-                               :duration        500
-                               :useNativeDriver true})])))
-
-(defn show-panel-anim
-  [bottom-anim-value alpha-value]
-  (anim/start
-   (anim/parallel
-    [(anim/spring bottom-anim-value {:toValue         40
-                                     :useNativeDriver true})
-     (anim/timing alpha-value {:toValue         0.4
-                               :duration        500
-                               :useNativeDriver true})])))
+            [status-im.ui.screens.keycard.pin.views :as pin.views]
+            [status-im.ui.components.bottom-panel.views :as bottom-panel]
+            [status-im.utils.utils :as utils]
+            [reagent.core :as reagent]
+            [status-im.ui.components.tooltip.views :as tooltip]))
 
 (defn separator []
   [react/view {:height 1 :background-color colors/gray-lighter}])
@@ -49,46 +31,47 @@
 (defn displayed-name [contact]
   (if (or (:preferred-name contact) (:name contact))
     (multiaccounts/displayed-name contact)
-    (:address contact)))
+    (utils/get-shortened-checksum-address (:address contact))))
 
 (defn contact-item [title contact]
-  [list-item/list-item
-   {:title-prefix       title
-    :title-prefix-width 45
-    :type               :small
-    :title
-    [copyable-text/copyable-text-view
-     {:copied-text (displayed-name contact)}
-     [react/text
-      {:ellipsize-mode  :middle
-       :number-of-lines 1
-       :style           {:color       colors/gray
-                         :font-family "monospace"
-                         ;; since this goes in list-item title
-                         ;; which has design constraints
-                         ;; specified in figma spec,
-                         ;; better to do this
-                         :line-height 22}}
-      (displayed-name contact)]]}])
+  [copyable-text/copyable-text-view
+   {:copied-text (displayed-name contact)}
+   [quo/list-item
+    {:title              title
+     :title-prefix-width 45
+     :size               :small
+     ;; FIXME
+     :accessory          :text
+     :accessory-text     [react/text
+                          {:ellipsize-mode  :middle
+                           :number-of-lines 1
+                           :style           {:font-family "monospace"
+                                             :line-height 22}}
+                          (displayed-name contact)]}]])
 
 (defn token-item [{:keys [icon color] :as token} display-symbol]
   (when token
     [react/view
-     [list-item/list-item
-      {:type        :small
-       :title       :t/wallet-asset
-       :accessories
-       [display-symbol
-        (if icon
-          [list/item-image
-           (assoc icon
-                  :style {:background-color colors/gray-lighter
-                          :border-radius    16}
-                  :image-style {:width 24 :height 24})]
-          [chat-icon/custom-icon-view-list (:name token) color 32])]}]
+     [quo/list-item
+      {:size      :small
+       :title     (i18n/label :t/wallet-asset)
+       :accessory [react/view {:flex-direction :row}
+                   [quo/text {:color :secondary
+                              :style {:margin-right 8}}
+                    display-symbol]
+                   (if icon
+                     [list/item-image
+                      (assoc icon
+                             :style {:background-color colors/gray-lighter
+                                     :border-radius    16}
+                             :image-style {:width 24 :height 24})]
+                     [chat-icon/custom-icon-view-list (:name token) color 32])]}]
      [separator]]))
 
-(defn header [{:keys [in-progress?] :as sign} {:keys [contact amount token approve?] :as tx} display-symbol fee fee-display-symbol]
+(defn header
+  [{:keys [in-progress?] :as sign}
+   {:keys [contact amount approve?]}
+   display-symbol fee fee-display-symbol]
   [react/view styles/header
    (when sign
      [react/touchable-highlight (when-not in-progress? {:on-press #(re-frame/dispatch [:set :signing/sign nil])})
@@ -106,50 +89,43 @@
        [{:style {:color colors/black}} (displayed-name contact)]]
       [react/text {:style {:margin-top 6 :color colors/gray}}
        (str fee " " fee-display-symbol " " (string/lower-case (i18n/label :t/network-fee)))])]
-   [react/touchable-highlight (when-not in-progress? {:on-press #(re-frame/dispatch [:signing.ui/cancel-is-pressed])})
-    [react/view {:padding 6}
-     [react/text {:style {:color colors/blue}} (i18n/label :t/cancel)]]]])
+   [react/view {:padding-horizontal 24}
+    [quo/button (merge {:type :secondary}
+                       (when-not in-progress? {:on-press #(re-frame/dispatch [:signing.ui/cancel-is-pressed])}))
+     (i18n/label :t/cancel)]]])
 
 (views/defview keycard-pin-view []
-  (views/letsubs [pin [:hardwallet/pin]]
-    [react/view
-     [pin.views/pin-view
-      {:pin           pin
-       :retry-counter nil
-       :step          :sign
-       :status        nil
-       :error-label   nil}]]))
+  (views/letsubs [pin [:keycard/pin]
+                  small-screen? [:dimensions/small-screen?]
+                  error-label [:keycard/pin-error-label]
+                  enter-step [:keycard/pin-enter-step]
+                  status [:keycard/pin-status]
+                  retry-counter [:keycard/retry-counter]]
+    (let [enter-step (or enter-step :sign)]
+      [react/view
+       [pin.views/pin-view
+        {:pin           pin
+         :retry-counter retry-counter
+         :step          enter-step
+         :small-screen? small-screen?
+         :status        status
+         :error-label   error-label}]])))
 
-(defn- keycard-connect-view []
-  [react/view {:padding-vertical 20
-               :flex             1
-               :align-items      :center
-               :justify-content  :center}
-   [react/image {:source      (resources/get-image :keycard-phone)
-                 :resize-mode :center
-                 :style       {:width  160
-                               :height 170}}]
-   [react/view {:margin-top 10}
-    [react/text {:style {:text-align  :center
-                         :color       colors/gray}}
-     (i18n/label :t/hold-card)]]])
-
-(defn- keycard-processing-view []
-  [react/view {:flex-direction  :column
-               :flex            1
-               :justify-content :center
-               :align-items     :center}
-   [react/activity-indicator {:size      :large
-                              :animating true}]
-   [react/text {:style {:margin-top 16
-                        :color      colors/gray}}
-    (i18n/label :t/processing)]])
-
-(defn- sign-with-keycard-button
+(defn sign-with-keycard-button
   [amount-error gas-error]
-  [button/button {:on-press  #(re-frame/dispatch [:signing.ui/sign-with-keycard-pressed])
-                  :disabled? (or amount-error gas-error)
-                  :label     :t/sign-with-keycard}])
+  (let [disabled? (or amount-error gas-error)]
+    [react/touchable-highlight {:on-press #(when-not disabled?
+                                             (re-frame/dispatch [:signing.ui/sign-with-keycard-pressed]))}
+     [react/view (styles/sign-with-keycard-button disabled?)
+      [react/text {:style (styles/sign-with-keycard-button-text disabled?)}
+       (i18n/label :t/sign-with)]
+      [react/view {:padding-right 16}
+       [react/image {:source (resources/get-image :keycard-logo)
+                     :style  (merge {:width         64
+                                     :margin-bottom 7
+                                     :height        26}
+                                    (when (colors/dark?)
+                                      {:tint-color colors/white-persist}))}]]]]))
 
 (defn- signing-phrase-view [phrase]
   [react/view {:align-items :center}
@@ -158,14 +134,138 @@
 
 (defn- keycard-view
   [{:keys [keycard-step]} phrase]
-  [react/view {:height 500}
+  [react/view
    [signing-phrase-view phrase]
    (case keycard-step
-     :pin [keycard-pin-view]
-     :connect [keycard-connect-view]
-     :signing [keycard-processing-view]
+     :pin     [keycard-pin-view]
      [react/view {:align-items :center :margin-top 16 :margin-bottom 40}
       [sign-with-keycard-button nil nil]])])
+
+(defn redeem-tx-header [account receiver small-screen?]
+  (fn []
+    [react/view {:style {:align-self :stretch :margin-top 30}}
+     [separator]
+     [react/view {:style {:flex-direction :row
+                          :justify-content :space-between
+                          :align-items :center
+                          :padding-left 16 :margin-vertical 8}}
+      [react/text {:style {:flex 2 :margin-right 16}} (i18n/label :t/keycard-redeem-title)]
+      [react/text {:number-of-lines 1
+                   :ellipsize-mode :middle
+                   :style {:padding-left 16
+                           :color colors/gray
+                           :flex 3}}
+       (if account (:name account) receiver)]
+      (when account
+        [react/view {:style {:flex 1 :padding-left 8}}
+         [chat-icon/custom-icon-view-list (:name account) (:color account) (if small-screen? 20 32)]])]
+     [separator]]))
+
+(defn signature-request-header [amount currency small-screen? fiat-amount fiat-currency]
+  (fn []
+    [react/view {:style {:align-self :stretch :margin-vertical 30}}
+     [react/nested-text {:style {:font-weight "500" :font-size (if small-screen? 34 44)
+                                 :text-align :center}}
+      (str amount " ")
+      [{:style {:color colors/gray}} currency]]
+     [react/text {:style {:font-size 19 :text-align :center
+                          :margin-bottom 16}}
+      (str fiat-amount " " fiat-currency)]
+     [separator]]))
+
+(defn terminal-button [{:keys [on-press theme disabled? height]} label]
+  [react/touchable-opacity {:disabled disabled?
+                            :on-press on-press
+                            :style    {:height           height
+                                       :border-radius    16
+                                       :flex             1
+                                       :justify-content  :center
+                                       :align-items      :center
+                                       :background-color (if (= theme :negative)
+                                                           colors/red-transparent-10
+                                                           colors/blue-light)}}
+   [quo/text {:size            :large
+              :number-of-lines 1
+              :color           (if (= theme :negative)
+                                 :negative
+                                 :link)
+              :weight          :medium}
+    label]])
+
+(defn signature-request-footer [keycard-step small-screen?]
+  (fn []
+    [react/view {:style {:padding-horizontal 16}}
+     [react/view {:style {:flex-direction :row}}
+      [terminal-button {:disabled? (= keycard-step :success)
+                        :height    (if small-screen? 52 64)
+                        :on-press  #(re-frame/dispatch [:show-popover {:view :transaction-data}])}
+       (i18n/label :t/show-transaction-data)]]
+     [react/view {:margin-top     8
+                  :flex-direction :row
+                  :margin-bottom  16}
+      [terminal-button {:theme     :negative
+                        :disabled? (= keycard-step :success)
+                        :height    64
+                        :on-press  #(re-frame/dispatch [:signing.ui/cancel-is-pressed])}
+       (i18n/label :t/decline)]]]))
+
+(defn signature-request [{:keys [formatted-data account fiat-amount fiat-currency keycard-step]}
+                         connected?
+                         small-screen?]
+  (let [message (:message formatted-data)]
+    [react/view (assoc (styles/message) :padding-vertical 16)
+     [keycard-sheet/connect-keycard
+      {:on-connect    ::keycard.common/on-card-connected
+       :on-disconnect ::keycard.common/on-card-disconnected
+       :connected?    connected?
+       :on-cancel     #(re-frame/dispatch [:signing.ui/cancel-is-pressed])
+       :params
+       (if (:receiver message)
+         {:header (redeem-tx-header account (:receiver message) small-screen?)
+          :title (i18n/label :t/confirmation-request)
+          :small-screen? small-screen?
+          :state-translations {:init {:title :t/keycard-redeem-tx
+                                      :description :t/keycard-redeem-tx-desc}}}
+         {:title (i18n/label :t/confirmation-request)
+          :header (signature-request-header (:formatted-amount message)
+                                            (:formatted-currency message)
+                                            small-screen? fiat-amount fiat-currency)
+          :footer (signature-request-footer keycard-step small-screen?)
+          :small-screen? small-screen?})}]]))
+
+(defn- transaction-data-item [{:keys [label data]}]
+  [react/view
+   [react/text {:style {:font-size     17
+                        :line-height   20
+                        :margin-bottom 8
+                        :color         colors/gray}}
+    label]
+   [react/text {:style {:font-size     17
+                        :line-height   20
+                        :margin-bottom 24}}
+    data]])
+
+(views/defview transaction-data []
+  (views/letsubs
+    [{:keys [formatted-data]} [:signing/sign]]
+    [react/view {:style {:flex 1}}
+     [react/view {:style {:margin-horizontal 24
+                          :margin-top        24}}
+      [react/text {:style {:font-size   17
+                           :font-weight "700"}}
+       (i18n/label :t/transaction-data)]]
+     [react/scroll-view {:style {:flex               1
+                                 :margin-horizontal  8
+                                 :padding-horizontal 16
+                                 :padding-vertical   10
+                                 :margin-vertical    14}}
+      [transaction-data-item {:label "Label"
+                              :data  formatted-data}]]
+     [separator]
+     [react/view {:style {:margin-horizontal 8
+                          :margin-vertical   16}}
+      [quo/button  {:on-press #(re-frame/dispatch [:hide-popover])}
+       (i18n/label :t/close)]]]))
 
 (views/defview password-view [{:keys [type error in-progress? enabled?] :as sign}]
   (views/letsubs [phrase [:signing/phrase]]
@@ -173,159 +273,177 @@
       :password
       [react/view {:padding-top 8 :padding-bottom 8}
        [signing-phrase-view phrase]
-       [text-input/text-input-with-label
-        {:secure-text-entry   true
-         :placeholder         (i18n/label :t/enter-password)
-         :on-change-text      #(re-frame/dispatch [:signing.ui/password-is-changed (security/mask-data %)])
-         :accessibility-label :enter-password-input
-         :auto-capitalize     :none
-         :editable            (not in-progress?)
-         :error               error
-         :container           {:margin-top 12 :margin-bottom 12 :margin-horizontal 16}}]
+       [react/view {:padding-horizontal 16
+                    :padding-vertical   12}
+        [quo/text-input
+         {:secure-text-entry   true
+          :placeholder         (i18n/label :t/enter-password)
+          :on-change-text      #(re-frame/dispatch [:signing.ui/password-is-changed (security/mask-data %)])
+          :accessibility-label :enter-password-input
+          :auto-capitalize     :none
+          :editable            (not in-progress?)
+          :error               error
+          :show-cancel         false}]]
        [react/view {:align-items :center :height 60}
         (if in-progress?
           [react/activity-indicator {:animating true
                                      :size      :large}]
-          [button/button {:on-press  #(re-frame/dispatch [:signing.ui/sign-is-pressed])
-                          :disabled? (not enabled?)
-                          :label     :t/transactions-sign}])]]
+          [quo/button {:on-press  #(re-frame/dispatch [:signing.ui/sign-is-pressed])
+                       :disabled  (not enabled?)}
+           (i18n/label :t/transactions-sign)])]]
       :keycard
       [keycard-view sign phrase]
       [react/view])))
 
 (views/defview message-sheet []
-  (views/letsubs [{:keys [formatted-data type] :as sign} [:signing/sign]]
-    [react/view styles/message
-     [react/view styles/message-header
-      [react/text {:style {:typography :title-bold}} (i18n/label :t/signing-a-message)]
-      [react/touchable-highlight {:on-press #(re-frame/dispatch [:signing.ui/cancel-is-pressed])}
-       [react/view {:padding 6}
-        [react/text {:style {:color colors/blue}} (i18n/label :t/cancel)]]]]
-     [separator]
-     [react/view {:padding-top 16 :flex 1}
-      [react/view styles/message-border
-       [react/scroll-view
-        [react/text (or formatted-data "")]]]
-      [password-view sign]]]))
+  (views/letsubs [{:keys [formatted-data type] :as sign} [:signing/sign-message]
+                  small-screen? [:dimensions/small-screen?]
+                  keycard [:keycard]]
+    (if (= type :pinless)
+      [signature-request sign (:card-connected? keycard) small-screen?]
+      [react/view (styles/message)
+       [react/view styles/message-header
+        [react/text {:style {:typography :title-bold}} (i18n/label :t/signing-a-message)]
+        [react/touchable-highlight {:on-press #(re-frame/dispatch [:signing.ui/cancel-is-pressed])}
+         [react/view {:padding 6}
+          [react/text {:style {:color colors/blue}} (i18n/label :t/cancel)]]]]
+       [separator]
+       [react/view {:padding-top 16 :flex 1}
+        [react/view styles/message-border
+         [react/scroll-view
+          [react/text (or formatted-data "")]]]
+        [password-view sign]]])))
 
-(defn amount-item [prices wallet-currency amount amount-error display-symbol fee-display-symbol]
+(defn error-item [_ _]
+  (let [show-tooltip? (reagent/atom false)]
+    (fn [title error]
+      [react/touchable-highlight {:on-press #(swap! show-tooltip? not)}
+       [react/view {:align-items :center :flex-direction :row}
+        [react/text {:style {:color colors/red :margin-right 8}}
+         (i18n/label title)]
+        [icons/icon :warning {:color colors/red}]
+        (when @show-tooltip?
+          [tooltip/tooltip error {:bottom-value -20
+                                  :font-size    12}])]])))
+
+(defn amount-item [prices wallet-currency amount amount-error display-symbol fee-display-symbol prices-loading?]
   (let [converted-value (* amount (get-in prices [(keyword display-symbol) (keyword (:code wallet-currency)) :price]))]
-    [list-item/list-item
-     {:type  :small
-      :title :t/send-request-amount
-      :error amount-error
-      :accessories [[react/nested-text {:style {:color colors/gray}}
-                     [{:style {:color colors/black}} (str (or amount 0))]
-                     " "
-                     (or display-symbol fee-display-symbol)
-                     " • "
-                     [{:style {:color colors/black}}
-                      (if converted-value
-                        (str "~" (i18n/format-currency converted-value (:code wallet-currency)))
-                        [react/activity-indicator {:color   :colors/gray
-                                                   :ios   {:size  :small}
-                                                   :android {:size :16}}])]
-                     " "
-                     (str (:code wallet-currency))]]}]))
+    [quo/list-item
+     {:size      :small
+      :title     (if amount-error
+                   [error-item :t/send-request-amount amount-error]
+                   (i18n/label :t/send-request-amount))
+      ;; FIXME???
+      ;; :error     amount-error
+      :accessory [react/view {:style {:flex-direction :row}}
+                  [react/nested-text {:style {:color colors/gray}}
+                   [{:style {:color colors/black}} (utils/format-decimals amount 6)]
+                   " "
+                   (or display-symbol fee-display-symbol)
+                   " • "]
+                  (if prices-loading?
+                    [react/small-loading-indicator]
+                    [react/text {:style {:color colors/black}}
+                     (i18n/format-currency converted-value (:code wallet-currency))])
+                  [react/text {:style {:color colors/gray}} (str " " (:code wallet-currency))]]}]))
 
-(defn fee-item [prices wallet-currency fee-display-symbol fee gas-error]
-  (let [converted-fee-value (* fee (get-in prices [(keyword fee-display-symbol) (keyword (:code wallet-currency)) :price]))]
-    [list-item/list-item
-     {:type        :small
-      :title       :t/network-fee
-      :error       gas-error
-      :accessories [[react/nested-text {:style {:color colors/gray}}
-                     [{:style {:color colors/black}} fee]
-                     " "
-                     fee-display-symbol
-                     " • "
-                     [{:style {:color colors/black}}
-                      (if converted-fee-value
-                        (str "~" (i18n/format-currency converted-fee-value (:code wallet-currency)))
-                        [react/activity-indicator {:color   :colors/gray
-                                                   :ios   {:size  :small}
-                                                   :android {:size :16}}])]
-                     " "
-                     (str (:code wallet-currency))]
-                    :chevron]
-      :on-press    #(re-frame/dispatch
+(views/defview fee-item [prices wallet-currency fee-display-symbol fee gas-error gas-error-state prices-loading?]
+  (views/letsubs [{:keys [gas-price-loading? gas-loading?]} [:signing/edit-fee]]
+    (let [converted-fee-value (* fee (get-in prices [(keyword fee-display-symbol) (keyword (:code wallet-currency)) :price]))]
+      [quo/list-item
+       {:size      :small
+        :title     (if (and (not (or gas-price-loading? gas-loading?)) gas-error)
+                     [error-item :t/network-fee gas-error]
+                     (i18n/label :t/network-fee))
+        ;; FIXME
+        ;; :error     (when-not (or gas-price-loading? gas-loading?) gas-error)
+        :disabled  (or gas-price-loading? gas-loading?)
+        :chevron   true
+        :accessory (if (or gas-price-loading? gas-loading?)
+                     [react/small-loading-indicator]
+                     (if (= :gas-isnt-set gas-error-state)
+                       [react/text {:style               {:color colors/blue}
+                                    :accessibility-label :custom-gas-fee}
+                        (i18n/label :t/set-custom-fee)]
+                       [react/view {:style               {:flex-direction :row}
+                                    :accessibility-label :custom-gas-fee}
+                        [react/nested-text {:style {:color colors/gray}}
+                         [{:style {:color colors/black}} (utils/format-decimals fee 6)]
+                         " "
+                         fee-display-symbol
+                         " • "]
+                        (if prices-loading?
+                          [react/small-loading-indicator]
+                          [react/text {:style {:color colors/black}}
+                           (i18n/format-currency converted-fee-value (:code wallet-currency))])
+                        [react/text {:style {:color colors/gray}} (str " " (:code wallet-currency))]]))
+        :on-press  #(re-frame/dispatch
                      [:signing.ui/open-fee-sheet
                       {:content        (fn [] [sheets/fee-bottom-sheet fee-display-symbol])
-                       :content-height 270}])}]))
+                       :content-height 270}])}])))
 
-(views/defview sheet [{:keys [from contact amount token approve?] :as tx}]
+(views/defview network-item []
+  (views/letsubs [network-name [:network-name]]
+    [quo/list-item
+     {:title          (i18n/label :t/network)
+      :size           :small
+      :accessory      :text
+      :accessory-text network-name}]))
+
+(views/defview sheet
+  [{:keys [from contact amount token] :as tx}]
   (views/letsubs [fee                   [:signing/fee]
                   sign                  [:signing/sign]
                   chain                 [:ethereum/chain-keyword]
-                  {:keys [amount-error gas-error]} [:signing/amount-errors (:address from)]
+                  {:keys [amount-error gas-error gas-error-state]}
+                  [:signing/amount-errors (:address from)]
                   keycard-multiaccount? [:keycard-multiaccount?]
                   prices                [:prices]
-                  wallet-currency       [:wallet/currency]]
+                  wallet-currency       [:wallet/currency]
+                  mainnet?              [:mainnet?]
+                  prices-loading?       [:prices-loading?]]
     (let [display-symbol     (wallet.utils/display-symbol token)
           fee-display-symbol (wallet.utils/display-symbol (tokens/native-currency chain))]
-      [react/view styles/sheet
+      [react/view (styles/sheet)
        [header sign tx display-symbol fee fee-display-symbol]
        [separator]
        (if sign
          [react/view {:padding-top 20}
           [password-view sign]]
          [react/view
+          (when-not mainnet?
+            [react/view
+             [network-item]
+             [separator]])
           [contact-item (i18n/label :t/from) from]
           [separator]
           [contact-item (i18n/label :t/to) contact]
           [separator]
           [token-item token display-symbol]
-          [amount-item prices wallet-currency amount amount-error display-symbol fee-display-symbol]
+          [amount-item prices wallet-currency amount amount-error display-symbol fee-display-symbol prices-loading?]
           [separator]
-          [fee-item prices wallet-currency fee-display-symbol fee gas-error]
+          [fee-item prices wallet-currency fee-display-symbol fee gas-error gas-error-state prices-loading?]
+          (when (= :gas-is-set gas-error-state)
+            [react/text {:style {:color colors/gray :margin-horizontal 32 :text-align :center}}
+             (i18n/label :t/tx-fail-description1)])
           [react/view {:align-items :center :margin-top 16 :margin-bottom 40}
            (if keycard-multiaccount?
              [sign-with-keycard-button amount-error gas-error]
-             [button/button {:on-press  #(re-frame/dispatch [:set :signing/sign {:type :password}])
-                             :disabled? (or amount-error gas-error)
-                             :label     :t/sign-with-password}])]])])))
-
-(defn signing-view [tx window-height]
-  (let [bottom-anim-value (anim/create-value window-height)
-        alpha-value       (anim/create-value 0)
-        clear-timeout     (atom nil)
-        current-tx        (reagent/atom nil)
-        update?           (reagent/atom nil)]
-    (reagent/create-class
-     {:component-will-update (fn [_ [_ tx _]]
-                               (when @clear-timeout (js/clearTimeout @clear-timeout))
-                               (cond
-                                 @update?
-                                 (do (reset! update? false)
-                                     (show-panel-anim bottom-anim-value alpha-value))
-
-                                 (and @current-tx tx)
-                                 (do (reset! update? true)
-                                     (js/setTimeout #(reset! current-tx tx) 600)
-                                     (hide-panel-anim bottom-anim-value alpha-value (- window-height)))
-
-                                 tx
-                                 (do (reset! current-tx tx)
-                                     (show-panel-anim bottom-anim-value alpha-value))
-
-                                 :else
-                                 (do (reset! clear-timeout (js/setTimeout #(reset! current-tx nil) 500))
-                                     (hide-panel-anim bottom-anim-value alpha-value (- window-height)))))
-      :reagent-render        (fn []
-                               (when @current-tx
-                                 [react/keyboard-avoiding-view {:style {:position :absolute :top 0 :bottom 0 :left 0 :right 0}}
-                                  [react/view {:flex 1}
-                                   [react/animated-view {:flex 1 :background-color :black :opacity alpha-value}]
-                                   [react/animated-view {:style {:position  :absolute
-                                                                 :transform [{:translateY bottom-anim-value}]
-                                                                 :bottom 0 :left 0 :right 0}}
-                                    [react/view {:flex 1}
-                                     (if (:message @current-tx)
-                                       [message-sheet]
-                                       [sheet @current-tx])]]]]))})))
+             (if (= :gas-isnt-set gas-error-state)
+               [react/text {:style {:color colors/gray :margin-horizontal 32 :text-align :center}}
+                (i18n/label :t/tx-fail-description2)]
+               [quo/button {:on-press #(re-frame/dispatch [:set :signing/sign {:type :password}])
+                            :disabled (or amount-error gas-error)
+                            :theme    (if gas-error-state :negative :main)}
+                (i18n/label (if gas-error-state
+                              :t/sign-anyway
+                              :t/sign-with-password))]))]])])))
 
 (views/defview signing []
-  (views/letsubs [tx [:signing/tx]
-                  {window-height :height} [:dimensions/window]]
-    ;;we use select-keys here because we don't want to update view if other keys in map is changed
-    [signing-view (when tx (select-keys tx [:from :contact :amount :token :approve? :message])) window-height]))
+  (views/letsubs [tx [:signing/tx]]
+    [bottom-panel/animated-bottom-panel
+     ;;we use select-keys here because we don't want to update view if other keys in map are changed
+     (when tx (select-keys tx [:from :contact :amount :token :approve? :message]))
+     #(if (:message %)
+        [message-sheet]
+        [sheet %])]))

@@ -1,4 +1,5 @@
-(ns status-im.utils.security)
+(ns status-im.utils.security
+  (:require [status-im.utils.security-html :as h]))
 
 (defprotocol Unmaskable
   ;; Retrieve the stored value.
@@ -10,8 +11,20 @@
 (deftype MaskedData [data]
   Object
   (toString [_] "******")
+
+  ICounted
+  (-count [^js this]
+    (count (.-data this)))
+
+  IEquiv
+  (-equiv [this other]
+    (if (instance? MaskedData other)
+      (= (unmask this)
+         (unmask other))
+      false))
+
   Unmaskable
-  (unmask [this]
+  (unmask [^js this]
     (.-data this)))
 
 ;; Returns a MaskedData instance that stores the piece of data.
@@ -24,7 +37,7 @@
     data))
 
 ;; Links starting with javascript:// should not be handled at all
-(def javascript-link-regex #"javascript://.*")
+(def javascript-link-regex #"(?i)javascript://.*")
 ;; Anything with rtlo character we don't handle as it might be a spoofed url
 (def rtlo-link-regex #".*\u202e.*")
 
@@ -32,8 +45,10 @@
   "Check the link is safe to be handled, it is not a javavascript link or contains
   an rtlo character, which might mean is a spoofed url"
   [link]
-  (not (or (re-matches javascript-link-regex link)
-           (re-matches rtlo-link-regex link))))
+  (let [decoded-link (js/decodeURIComponent link)]
+    (not (or (re-matches javascript-link-regex decoded-link)
+             (re-matches rtlo-link-regex decoded-link)
+             (h/is-html? decoded-link)))))
 
 (defn safe-link-text?
   "Check the text of the message containing a link  is safe to be handled

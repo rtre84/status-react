@@ -108,6 +108,17 @@ public class MainActivity extends ReactFragmentActivity
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
+        switch (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) {
+            case Configuration.UI_MODE_NIGHT_YES:
+                setTheme(R.style.DarkTheme);
+
+                break;
+            case Configuration.UI_MODE_NIGHT_NO:
+                setTheme(R.style.LightTheme);
+                break;
+            default:
+                setTheme(R.style.LightTheme);
+        }
         // Make sure we get an Alert for every uncaught exceptions
         registerUncaughtExceptionHandler(MainActivity.this);
 
@@ -117,7 +128,8 @@ public class MainActivity extends ReactFragmentActivity
 
         setSecureFlag();
         SplashScreen.show(this, true);
-        super.onCreate(savedInstanceState);
+        // NOTE: Try to not restore the state https://github.com/software-mansion/react-native-screens/issues/17
+        super.onCreate(null);
 
         if (!shouldShowRootedNotification()) {
             configureStatus();
@@ -187,7 +199,7 @@ public class MainActivity extends ReactFragmentActivity
     private static final Integer FREQUENCY_OF_REMINDER_IN_PERCENT = 5;
 
     private boolean shouldShowRootedNotification() {
-        if (RootUtil.isDeviceRooted()) {
+        if (RootUtil.isDeviceRooted() && BuildConfig.ENABLE_ROOT_ALERT == "1") {
             if (userRejectedRootedNotification()) {
                 return ((Math.random() * 100) < FREQUENCY_OF_REMINDER_IN_PERCENT);
             } else return true;
@@ -228,10 +240,6 @@ public class MainActivity extends ReactFragmentActivity
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         if (mPermissionListener != null && mPermissionListener.onRequestPermissionsResult(requestCode, permissions, grantResults)) {
             mPermissionListener = null;
-        }
-        if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            // Permission has been granted. Start camera preview Activity.
-            com.github.alinz.reactnativewebviewbridge.WebViewBridgeManager.grantAccess(requestCode);
         }
     }
 

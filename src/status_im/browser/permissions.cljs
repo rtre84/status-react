@@ -2,8 +2,8 @@
   (:require [status-im.constants :as constants]
             [status-im.ethereum.json-rpc :as json-rpc]
             [status-im.i18n :as i18n]
+            [status-im.navigation :as navigation]
             [status-im.qr-scanner.core :as qr-scanner]
-            [status-im.ui.screens.navigation :as navigation]
             [status-im.utils.fx :as fx]))
 
 (declare process-next-permission)
@@ -26,8 +26,7 @@
   (cond
     (= permission constants/dapp-permission-qr-code)
     (fx/merge (assoc-in cofx [:db :browser/options :yielding-control?] true)
-              (qr-scanner/scan-qr-code {}
-                                       {:handler        :browser.bridge.callback/qr-code-scanned
+              (qr-scanner/scan-qr-code {:handler        :browser.bridge.callback/qr-code-scanned
                                         :cancel-handler :browser.bridge.callback/qr-code-canceled
                                         :data           {:dapp-name  dapp-name
                                                          :permission permission
@@ -51,13 +50,12 @@
   "Send response to the bridge. If the permission is allowed, send data associated
    with the permission"
   [{:keys [db] :as cofx} permission message-id allowed? data]
-  {:browser/send-to-bridge {:message (cond-> {:type       constants/api-response
-                                              :isAllowed  allowed?
-                                              :permission permission
-                                              :messageId  message-id}
-                                       allowed?
-                                       (assoc :data data))
-                            :webview (:webview-bridge db)}})
+  {:browser/send-to-bridge (cond-> {:type       constants/api-response
+                                    :isAllowed  allowed?
+                                    :permission permission
+                                    :messageId  message-id}
+                             allowed?
+                             (assoc :data data))})
 
 (fx/defn update-dapp-permissions
   [{:keys [db]} dapp-name permission allowed?]

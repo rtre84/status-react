@@ -3,30 +3,15 @@
             [status-im.ui.components.status-bar.styles :as styles]
             [status-im.utils.platform :as platform]))
 
-(defn status-bar [{:keys [type flat?]}]
-  (let [view-style
-        (case type
-          :main styles/view-main
-          :modal-main styles/view-modal-main
-          :transparent styles/view-transparent
-          :modal styles/view-modal
-          :modal-white styles/view-modal-white
-          :modal-wallet styles/view-modal-wallet
-          :transaction styles/view-transaction
-          :wallet styles/view-wallet
-          :wallet-tab styles/view-wallet-tab
-          styles/view-default)]
-    (when-not platform/desktop?
-      [react/view {:style (cond-> view-style flat? (assoc :elevation 0))}])))
+(def route->bar-type (merge {:qr-scanner {:type :black}
+                             :image-preview {:type :black}}
+                            (when platform/ios?
+                              {:new-chat        {:type :black}
+                               :new-public-chat {:type :black}})))
 
+;; TODO: Integrate into navigation
 (defn get-config [view-id]
-  (or (get {:create-multiaccount             {:flat? true}
-            :chat-modal                      {:type :modal-white}
-            :intro                           {:flat? true}
-            :recipient-qr-code               {:type :transparent}
-            :wallet-transactions-filter      {:type :modal-main}}
-           view-id)
-      {:type :main}))
+  (get route->bar-type view-id {:type :main}))
 
 (defn set-status-bar
   "If more than one `StatusBar` is rendered, the one which was mounted last will
@@ -46,25 +31,17 @@
                 network-activity-indicator-visible
                 translucent]}
         (case type
-          :main styles/status-bar-main
-          :modal-main styles/status-bar-main-main
-          :transparent styles/status-bar-transparent
-          :modal styles/status-bar-modal
-          :modal-white styles/status-bar-modal-white
-          :modal-wallet styles/status-bar-modal-wallet
-          :transaction styles/status-bar-transaction
-          :wallet styles/status-bar-wallet
-          :wallet-tab styles/status-bar-wallet-tab
-          styles/status-bar-default)]
-    (when (and background-color platform/android?)
-      (.setBackgroundColor react/status-bar-class (clj->js background-color)))
+          :black (styles/status-bar-black)
+          (styles/status-bar-default))]
     (when bar-style
-      (.setBarStyle react/status-bar-class (clj->js bar-style)))
+      (.setBarStyle ^js react/status-bar-class (clj->js bar-style)) true)
+    (when (and background-color platform/android?)
+      (.setBackgroundColor ^js react/status-bar-class (clj->js background-color)))
     (when hidden
-      (.setHidden react/status-bar-class (clj->js hidden)))
+      (.setHidden ^js react/status-bar-class (clj->js hidden)))
     (when network-activity-indicator-visible
       (.setNetworkActivityIndicatorVisible
-       react/status-bar-class
+       ^js react/status-bar-class
        (clj->js network-activity-indicator-visible)))
     (when translucent
-      (.setTranslucent react/status-bar-class (clj->js translucent)))))
+      (.setTranslucent ^js react/status-bar-class (clj->js translucent)))))

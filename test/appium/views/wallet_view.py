@@ -13,17 +13,15 @@ class SendRequestButton(BaseButton):
 
 
 class ChooseRecipientButton(BaseButton):
-
     def __init__(self, driver):
         super(ChooseRecipientButton, self).__init__(driver)
         self.locator = self.Locator.accessibility_id('choose-recipient-button')
 
 
 class TransactionHistoryButton(BaseButton):
-
     def __init__(self, driver):
         super(TransactionHistoryButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='History']")
+        self.locator = self.Locator.text_selector("History")
 
     def navigate(self):
         from views.transactions_view import TransactionsView
@@ -33,19 +31,37 @@ class TransactionHistoryButton(BaseButton):
 class ChooseFromContactsButton(BaseButton):
     def __init__(self, driver):
         super(ChooseFromContactsButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='Choose From Contacts']")
+        self.locator = self.Locator.text_selector("Choose From Contacts")
 
 
-class EthAssetText(BaseText):
+class ScanQRButton(BaseButton):
     def __init__(self, driver):
-        super(EthAssetText, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='ETHro']/preceding-sibling::*[1]")
+        super(ScanQRButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id("accounts-qr-code")
 
 
-class STTAssetText(BaseText):
+class AssetText(BaseText):
+    def __init__(self, driver, asset):
+        super(AssetText, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector("//android.view.ViewGroup[@content-desc=':%s-asset-value']"
+                                                   "//android.widget.TextView[1]" % asset)
+
+
+class AssetFullNameInAssets(BaseText):
     def __init__(self, driver):
-        super(STTAssetText, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='STT']/preceding-sibling::*[1]")
+        super(AssetFullNameInAssets, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector('//*[@content-desc="checkbox"]/../../android.widget.TextView[1]')
+
+
+class AssetSymbolInAssets(BaseText):
+    def __init__(self, driver):
+        super(AssetSymbolInAssets, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector('//*[@content-desc="checkbox"]/../../android.widget.TextView[2]')
+
+class CurrencyItemText(BaseText):
+    def __init__(self, driver):
+        super(CurrencyItemText, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector('//*[@content-desc="currency-item"]//android.widget.TextView')
 
 
 class UsdTotalValueText(BaseText):
@@ -68,6 +84,11 @@ class OptionsButton(BaseButton):
     def __init__(self, driver):
         super(OptionsButton, self).__init__(driver)
         self.locator = self.Locator.accessibility_id('options-menu-button')
+
+class AccountOptionsButton(BaseButton):
+    def __init__(self, driver, account_name):
+        super(AccountOptionsButton, self).__init__(driver)
+        self.locator = self.Locator.xpath_selector('(//*[@text="%s"]/..//*[@content-desc="icon"])[2]' % account_name)
 
 
 class ManageAssetsButton(BaseButton):
@@ -125,13 +146,13 @@ class SignInPhraseText(BaseText):
 class RemindMeLaterButton(BaseButton):
     def __init__(self, driver):
         super(RemindMeLaterButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='Remind me later']")
+        self.locator = self.Locator.xpath_selector("//*[@text='Show me this again']")
 
 
 class AssetTextElement(BaseText):
     def __init__(self, driver, asset_name):
         super(AssetTextElement, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//*[@text='%s']" % asset_name)
+        self.locator = self.Locator.text_part_selector(asset_name)
 
 
 class CollectibleTextElement(BaseText):
@@ -147,7 +168,7 @@ class AssetCheckBox(BaseButton):
         self.locator = self.Locator.xpath_selector("//*[@text='%s']" % self.asset_name)
 
     def click(self):
-        self.scroll_to_element().click()
+        self.scroll_to_element(12).click()
         self.driver.info('Click %s asset checkbox' % self.asset_name)
 
 
@@ -187,7 +208,7 @@ class ViewInCryptoKittiesButton(BaseButton):
         return BaseWebView(self.driver)
 
     def click(self):
-        self.wait_for_element(30).click()
+        self.wait_for_element(60).click()
         self.driver.info('Tap on View in CryptoKitties')
         return self.navigate()
 
@@ -195,7 +216,7 @@ class ViewInCryptoKittiesButton(BaseButton):
 class BackupRecoveryPhrase(BaseButton):
     def __init__(self, driver):
         super(BackupRecoveryPhrase, self).__init__(driver)
-        self.locator = self.Locator.text_selector('Backup your seed phrase')
+        self.locator = self.Locator.text_selector('Back up your seed phrase')
 
     def navigate(self):
         from views.profile_view import ProfileView
@@ -222,12 +243,17 @@ class AccountElementButton(BaseButton):
 
     def color_matches(self, expected_color_image_name: str):
         amount_text = BaseText(self.driver)
-        amount_text.locator = amount_text.Locator.xpath_selector(self.locator.value + "//*[@text='0 USD']")
+        amount_text.locator = amount_text.Locator.xpath_selector(self.locator.value + "//*[@text=' USD']")
         return amount_text.is_element_image_equals_template(expected_color_image_name)
+
+class StatusAccountTotalValueText(BaseText):
+    def __init__(self, driver):
+        super(StatusAccountTotalValueText, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('account-total-value')
+
 
 
 class SendTransactionButton(BaseButton):
-
     def __init__(self, driver):
         super(SendTransactionButton, self).__init__(driver)
         self.locator = self.Locator.xpath_selector("//*[@text='Send']")
@@ -243,7 +269,6 @@ class SendTransactionButton(BaseButton):
 
 
 class ReceiveTransactionButton(BaseButton):
-
     def __init__(self, driver):
         super(ReceiveTransactionButton, self).__init__(driver)
         self.locator = self.Locator.xpath_selector("//*[@text='Receive']")
@@ -269,55 +294,87 @@ class AddAccountButton(BaseButton):
         self.locator = self.Locator.text_selector('Add account')
 
 
-class AddAnAccountButton(BaseButton):
+class GenerateAnAccountButton(BaseButton):
     def __init__(self, driver):
-        super(AddAnAccountButton, self).__init__(driver)
-        self.locator = self.Locator.text_selector('Add an account')
+        super(GenerateAnAccountButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('add-account-sheet-generate')
 
-
-class GenerateNewAccountButton(BaseButton):
+class AddAWatchOnlyAddressButton(BaseButton):
     def __init__(self, driver):
-        super(GenerateNewAccountButton, self).__init__(driver)
-        self.locator = self.Locator.text_selector('Generate a new key')
+        super(AddAWatchOnlyAddressButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('add-account-sheet-watch')
+
+class EnterASeedPhraseButton(BaseButton):
+    def __init__(self, driver):
+        super(EnterASeedPhraseButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('add-account-sheet-seed')
+
+class EnterAPrivateKeyButton(BaseButton):
+    def __init__(self, driver):
+        super(EnterAPrivateKeyButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('add-account-sheet-private-key')
+
+class EnterAddressInput(BaseEditBox):
+    def __init__(self, driver):
+        super(EnterAddressInput, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('add-account-enter-watch-address')
+
+class EnterSeedPhraseInput(BaseEditBox):
+    def __init__(self, driver):
+        super(EnterSeedPhraseInput, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('add-account-enter-seed')
+
+class EnterPrivateKeyInput(BaseEditBox):
+    def __init__(self, driver):
+        super(EnterPrivateKeyInput, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('add-account-enter-private-key')
+
+class DeleteAccountButton(BaseButton):
+    def __init__(self, driver):
+        super(DeleteAccountButton, self).__init__(driver)
+        self.locator = self.Locator.text_selector('Delete account')
+
 
 
 class EnterYourPasswordInput(BaseEditBox):
     def __init__(self, driver):
         super(EnterYourPasswordInput, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector(
-            "//android.widget.TextView[@text='Enter your password']/following-sibling::android.widget.EditText")
+        self.locator = self.Locator.accessibility_id('add-account-enter-password')
 
-
-class GenerateAccountButton(BaseButton):
-    def __init__(self, driver):
-        super(GenerateAccountButton, self).__init__(driver)
-        self.locator = self.Locator.text_selector('Generate key')
 
 
 class AccountNameInput(BaseEditBox):
     def __init__(self, driver):
         super(AccountNameInput, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//android.widget.TextView[@text='Account name']"
-                                                   "/following-sibling::android.view.ViewGroup/android.widget.EditText")
+        self.locator = self.Locator.accessibility_id('enter-account-name')
 
 
 class AccountColorButton(BaseButton):
     def __init__(self, driver):
         super(AccountColorButton, self).__init__(driver)
         self.locator = self.Locator.xpath_selector("//android.widget.TextView[@text='Account color']"
-                                                   "/following-sibling::android.view.ViewGroup")
+                                                   "/following-sibling::android.view.ViewGroup[1]")
 
     def select_color_by_position(self, position: int):
         self.click()
         self.driver.find_element_by_xpath(
-            "//*[@text='Cancel']/../preceding-sibling::android.widget.ScrollView/*/*[%s]" % position).click()
+            "((//android.widget.ScrollView)[last()]/*/*)[%s]" % str(position+1)).click()
 
-
-class FinishButton(BaseButton):
+# Add account on Generate An Account screen
+class AddAccountGenerateAnAccountButton(BaseButton):
     def __init__(self, driver):
-        super(FinishButton, self).__init__(driver)
-        self.locator = self.Locator.text_selector('Finish')
+        super(AddAccountGenerateAnAccountButton, self).__init__(driver)
+        self.locator = self.Locator.accessibility_id('add-account-add-account-button')
 
+class AccountSettingsButton(BaseButton):
+    def __init__(self, driver):
+        super(AccountSettingsButton, self).__init__(driver)
+        self.locator = self.Locator.text_selector('Account settings')
+
+class ApplySettingsButton(BaseButton):
+    def __init__(self, driver):
+        super(ApplySettingsButton, self).__init__(driver)
+        self.locator = self.Locator.text_selector('Apply')
 
 class WalletView(BaseView):
     def __init__(self, driver):
@@ -326,8 +383,6 @@ class WalletView(BaseView):
 
         self.send_transaction_button = SendTransactionButton(self.driver)
         self.transaction_history_button = TransactionHistoryButton(self.driver)
-        self.eth_asset_value = EthAssetText(self.driver)
-        self.stt_asset_value = STTAssetText(self.driver)
         self.usd_total_value = UsdTotalValueText(self.driver)
 
         self.send_transaction_request = SendTransactionRequestButton(self.driver)
@@ -337,6 +392,10 @@ class WalletView(BaseView):
         self.options_button = OptionsButton(self.driver)
         self.manage_assets_button = ManageAssetsButton(self.driver)
         self.stt_check_box = STTCheckBox(self.driver)
+        self.all_assets_full_names = AssetFullNameInAssets(self.driver)
+        self.all_assets_symbols = AssetSymbolInAssets(self.driver)
+        self.currency_item_text = CurrencyItemText(self.driver)
+
 
         self.qr_code_image = QRCodeImage(self.driver)
         self.address_text = AddressText(self.driver)
@@ -360,29 +419,41 @@ class WalletView(BaseView):
         self.view_in_cryptokitties_button = ViewInCryptoKittiesButton(self.driver)
         self.set_currency_button = SetCurrencyButton(self.driver)
         self.add_account_button = AddAccountButton(self.driver)
-        self.add_an_account_button = AddAnAccountButton(self.driver)
-        self.generate_new_account_button = GenerateNewAccountButton(self.driver)
+        self.generate_an_account_button = GenerateAnAccountButton(self.driver)
+        self.add_watch_only_address_button = AddAWatchOnlyAddressButton(self.driver)
+        self.enter_a_seed_phrase_button = EnterASeedPhraseButton(self.driver)
+        self.enter_a_private_key_button = EnterAPrivateKeyButton(self.driver)
+        self.enter_address_input = EnterAddressInput(self.driver)
+        self.enter_seed_phrase_input = EnterSeedPhraseInput(self.driver)
+        self.enter_a_private_key_input = EnterPrivateKeyInput(self.driver)
+        self.delete_account_button = DeleteAccountButton(self.driver)
         self.enter_your_password_input = EnterYourPasswordInput(self.driver)
-        self.generate_account_button = GenerateAccountButton(self.driver)
         self.account_name_input = AccountNameInput(self.driver)
         self.account_color_button = AccountColorButton(self.driver)
-        self.finish_button = FinishButton(self.driver)
+        self.add_account_generate_account_button = AddAccountGenerateAnAccountButton(self.driver)
+        self.status_account_total_usd_value = StatusAccountTotalValueText(self.driver)
+        self.scan_qr_button = ScanQRButton(self.driver)
+
+        # individual account settings
+        self.account_settings_button = AccountSettingsButton(self.driver)
+        self.apply_settings_button = ApplySettingsButton(self.driver)
 
     def get_usd_total_value(self):
         import re
         return float(re.sub('[~,]', '', self.usd_total_value.text))
 
-    def get_eth_value(self):
-        self.eth_asset_value.scroll_to_element()
-        return float(self.eth_asset_value.text)
+    def get_account_options_by_name(self, account_name='Status account'):
+        return AccountOptionsButton(self.driver, account_name)
 
-    def get_stt_value(self):
-        self.stt_asset_value.scroll_to_element()
-        return float(self.stt_asset_value.text)
+
+    def get_asset_amount_by_name(self, asset: str):
+        asset_value = AssetText(self.driver, asset)
+        asset_value.scroll_to_element()
+        return float(asset_value.text.split()[0])
 
     def verify_currency_balance(self, expected_rate: int, errors: list):
         usd = self.get_usd_total_value()
-        eth = self.get_eth_value()
+        eth = self.get_asset_amount_by_name('ETH')
         expected_usd = round(eth * expected_rate, 2)
         percentage_diff = abs((usd - expected_usd) / ((usd + expected_usd) / 2)) * 100
         if percentage_diff > 2:
@@ -390,20 +461,38 @@ class WalletView(BaseView):
         else:
             self.driver.info('Current USD balance %s is ok' % usd)
 
-    def wait_balance_changed_on_wallet_screen(self, expected_balance=0.1, wait_time=300):
+    def wait_balance_is_equal_expected_amount(self, asset ='ETH', expected_balance=0.1, wait_time=300):
         counter = 0
         while True:
             if counter >= wait_time:
-                self.driver.info('Balance is not changed during %s seconds!' % wait_time)
-                return
-            elif self.get_eth_value() != expected_balance:
+                self.driver.fail('Balance is not changed during %s seconds!' % wait_time)
+            elif self.get_asset_amount_by_name(asset) != expected_balance:
                 counter += 10
                 time.sleep(10)
                 self.swipe_down()
-                self.driver.info('Waiting %s seconds for ETH update' % counter)
+                self.driver.info('Waiting %s seconds for %s balance update' % (counter,asset))
             else:
                 self.driver.info('Transaction received, balance updated!')
                 return
+
+    def wait_balance_is_changed(self, asset ='ETH', initial_balance=0, wait_time=300):
+        counter = 0
+        while True:
+            if counter >= wait_time:
+                self.driver.fail('Balance is not changed during %s seconds!' % wait_time)
+            elif self.asset_by_name(asset).is_element_present() and self.get_asset_amount_by_name(asset) == initial_balance:
+                counter += 10
+                time.sleep(10)
+                self.swipe_down()
+                self.driver.info('Waiting %s seconds for %s to update' % (counter,asset))
+            elif not self.asset_by_name(asset).is_element_present(10):
+                counter += 10
+                time.sleep(10)
+                self.swipe_down()
+                self.driver.info('Waiting %s seconds for %s to display asset' % (counter, asset))
+            else:
+                self.driver.info('Balance is updated!')
+                return self
 
     def get_sign_in_phrase(self):
         return ' '.join([element.text for element in self.sign_in_phrase.find_elements()])
@@ -417,7 +506,7 @@ class WalletView(BaseView):
         self.wallet_account_by_name(account_name).click()
         self.receive_transaction_button.click()
         address = self.address_text.text
-        self.back_button.click()
+        self.close_share_popup()
         return address
 
     def wallet_account_by_name(self, account_name):
@@ -429,6 +518,9 @@ class WalletView(BaseView):
     def asset_checkbox_by_name(self, asset_name):
         return AssetCheckBox(self.driver, asset_name)
 
+    def account_options_by_name(self, account_name):
+        return AccountOptionsButton(self.driver, account_name)
+
     def select_asset(self, *args):
         self.multiaccount_more_options.click()
         self.manage_assets_button.click()
@@ -439,9 +531,9 @@ class WalletView(BaseView):
     def send_transaction(self, **kwargs):
         send_transaction_view = self.send_transaction_button.click()
         send_transaction_view.select_asset_button.click()
-        asset_name = kwargs.get('asset_name', 'ETHro').upper()
+        asset_name = kwargs.get('asset_name', 'ETH').upper()
         asset_button = send_transaction_view.asset_by_name(asset_name)
-        send_transaction_view.select_asset_button.click_until_presence_of_element(asset_button)
+        send_transaction_view.select_asset_button.click_until_presence_of_element(send_transaction_view.eth_asset_in_select_asset_bottom_sheet_button)
         asset_button.click()
         send_transaction_view.amount_edit_box.click()
 
@@ -464,13 +556,16 @@ class WalletView(BaseView):
             recent_recipient.click()
         if kwargs.get('sign_transaction', True):
             send_transaction_view.sign_transaction_button.click()
-            send_transaction_view.sign_transaction()
+            if kwargs.get('keycard', False):
+                send_transaction_view.sign_transaction(keycard=True)
+            else:
+                send_transaction_view.sign_transaction()
 
     def receive_transaction(self, **kwargs):
         self.receive_transaction_button.click()
         send_transaction_view = self.send_transaction_request.click()
         send_transaction_view.select_asset_button.click()
-        asset_name = kwargs.get('asset_name', 'ETHro').upper()
+        asset_name = kwargs.get('asset_name', 'ETH').upper()
         asset_button = send_transaction_view.asset_by_name(asset_name)
         send_transaction_view.select_asset_button.click_until_presence_of_element(asset_button)
         asset_button.click()
@@ -508,12 +603,15 @@ class WalletView(BaseView):
     def get_account_by_name(self, account_name: str):
         return AccountElementButton(self.driver, account_name)
 
-    def add_account(self, account_name: str, password: str = common_password):
+    def add_account(self, account_name: str, password: str = common_password, keycard=False):
         self.add_account_button.click()
-        self.add_an_account_button.click()
-        self.generate_new_account_button.click()
-        self.generate_account_button.click()
-        self.enter_your_password_input.send_keys(password)
-        self.generate_account_button.click()
+        self.generate_an_account_button.click()
         self.account_name_input.send_keys(account_name)
-        self.finish_button.click()
+        if keycard:
+            from views.keycard_view import KeycardView
+            keycard_view = KeycardView(self.driver)
+            self.add_account_button.click()
+            keycard_view.enter_default_pin()
+        else:
+            self.enter_your_password_input.send_keys(password)
+            self.add_account_generate_account_button.click()

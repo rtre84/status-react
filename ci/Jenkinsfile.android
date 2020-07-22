@@ -1,16 +1,20 @@
+library 'status-react-jenkins@v1.2.0'
+
 pipeline {
   agent { label 'linux' }
 
   options {
     timestamps()
     /* Prevent Jenkins jobs from running forever */
-    timeout(time: 45, unit: 'MINUTES')
+    timeout(time: 20, unit: 'MINUTES')
     /* Limit builds retained */
     buildDiscarder(logRotator(
       numToKeepStr: '10',
       daysToKeepStr: '20',
       artifactNumToKeepStr: '10',
     ))
+    /* Allows combined build to copy */
+    copyArtifactPermission('/status-react/*')
   }
 
   parameters {
@@ -25,14 +29,10 @@ pipeline {
     LANG     = "en_US.UTF-8"
     LC_ALL   = "en_US.UTF-8"
     LANGUAGE = "en_US.UTF-8"
-    TARGET_OS = 'android'
+    TARGET   = 'android'
     BUILD_ENV = 'prod'
     NIX_CONF_DIR = "${env.WORKSPACE}/nix"
     FASTLANE_DISABLE_COLORS = 1
-    /* since we are mounting it we need to specify location */
-    STATUS_RELEASE_STORE_FILE = '/home/jenkins/status-im.keystore'
-    /* We use EXECUTOR_NUMBER to avoid multiple instances clashing */
-    LEIN_HOME = "/var/tmp/lein-${EXECUTOR_NUMBER}"
     /* coverage report identification */
     COVERALLS_SERVICE_NAME = "jenkins"
     COVERALLS_SERVICE_JOB_ID = "${JOB_NAME}#${BUILD_NUMBER}"
@@ -42,23 +42,12 @@ pipeline {
     stage('Prep') {
       steps {
         script {
-          /* Necessary to load methods */
-          android = load 'ci/android.groovy'
-          cmn     = load 'ci/common.groovy'
-          btype   = cmn.utils.getBuildType()
+          btype = utils.getBuildType()
           print "Running ${btype} build!"
-          cmn.ci.abortPreviousRunningBuilds()
+          jenkins.abortPreviousRunningBuilds()
           /* Cleanup and Prep */
-          cmn.prep(btype)
+          commonPrep(btype)
         }
-      }
-    }
-    stage('Implicit dependencies') {
-      steps {
-        /* Build implicit dependencies if needed (we run `lein deps :tree` but it's not really required, for this purpose)
-           Implicit dependencies include building a patched node_modules, fetching maven dependencies, and anything else required.
-           We do this before the parallel steps so we have a known starting situation. */
-        script { cmn.nix.shell('lein deps :tree', attr: 'targets.leiningen.shell') }
       }
     }
     stage('Parallel Assemble') {
@@ -66,23 +55,27 @@ pipeline {
         stage('Checks') { stages {
           stage('Lint') {
             steps {
-              script { cmn.nix.shell('lein cljfmt check', attr: 'targets.leiningen.shell') }
+              script {
+                /* We want the build result to be uploaded */
+                catchError(
+                  message: 'Linting check failed!',
+                  buildResult: 'FAILURE',
+                  stageResult: 'FAILURE'
+                ) {
+                  sh 'make lint'
+                }
+              }
             }
           }
           stage('Tests') {
             steps {
-              script { cmn.nix.shell('lein test-cljs', attr: 'targets.leiningen.shell') }
+              script {
+                sh 'make test'
+              }
             }
           }
         } }
         stage('Build') { stages {
-          stage('JSBundle') {
-            steps {
-              script {
-                cmn.nix.shell('make jsbundle-android', pure: false)
-              }
-            }
-          }
           stage('Bundle') {
             steps {
               script { apks = android.bundle() }
@@ -101,21 +94,18 @@ pipeline {
         stage('Upload') {
           steps {
             script {
-              def urls = apks.collect { cmn.uploadArtifact(it) }
+              def urls = apks.collect { s3.uploadArtifact(it) }
               /* return only the universal APK */
               if (urls.size() > 1) { 
                 env.PKG_URL = urls.find { it.contains('universal') }
               } else { /* if no universal is available pick first */
                 env.PKG_URL = urls.first()
               }
-              /* build type specific */
-              switch (btype) {
-                case 'release':
-                  android.uploadToPlayStore(); break;
-                case 'nightly':
-                  env.DIAWI_URL = android.uploadToDiawi(); break;
-                case 'e2e':
-                  env.SAUCE_URL = android.uploadToSauceLabs(); break;
+              if (utils.isNightlyBuild()) {
+                env.DIAWI_URL = android.uploadToDiawi()
+              }
+              if (utils.isE2EBuild()) {
+                env.SAUCE_URL = android.uploadToSauceLabs()
               }
             }
           }
@@ -129,8 +119,8 @@ pipeline {
     }
   }
   post {
-    success { script { load('ci/github.groovy').notifyPR(true) } }
-    failure { script { load('ci/github.groovy').notifyPR(false) } }
+    success { script { github.notifyPR(true) } }
+    failure { script { github.notifyPR(false) } }
     always { sh 'make _fix-node-perms' }
   }
 }

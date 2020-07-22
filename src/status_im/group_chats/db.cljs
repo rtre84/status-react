@@ -1,17 +1,9 @@
-(ns status-im.group-chats.db
-  (:require [status-im.chat.models :as models.chat]
-            [status-im.utils.gfycat.core :as gfycat]))
+(ns status-im.group-chats.db)
 
-(defn unwrap-events
-  "Flatten all events, denormalizing from field"
-  [all-updates]
-  (mapcat
-   (fn [{:keys [events from]}]
-     (map #(assoc % :from from) events))
-   all-updates))
+(def members-added-type 3)
 
 (defn joined?
-  [public-key {:keys [members-joined] :as chat}]
+  [public-key {:keys [members-joined]}]
   (contains? members-joined public-key))
 
 (defn invited?
@@ -19,32 +11,14 @@
   (contains? contacts my-public-key))
 
 (defn get-inviter-pk
-  [my-public-key {:keys [membership-updates]}]
-  (->> membership-updates
-       unwrap-events
+  [my-public-key {:keys [membership-update-events]}]
+  (->> membership-update-events
+       reverse
        (keep (fn [{:keys [from type members]}]
-               (when (and (= type "members-added")
+               (when (and (= type members-added-type)
                           ((set members) my-public-key))
                  from)))
-       last))
+       first))
 
-(defn get-pending-invite-inviter-name
-  "when the chat is a private group chat in which the user has been
-  invited and didn't accept the invitation yet, return inviter-name"
-  [contacts chat my-public-key]
-  (when (and (models.chat/group-chat? chat)
-             (invited? my-public-key chat)
-             (not (joined? my-public-key chat)))
-    (let [inviter-pk (get-inviter-pk my-public-key chat)]
-      (get-in contacts [inviter-pk :name]
-              (gfycat/generate-gfy inviter-pk)))))
-
-(defn get-inviter-name
-  "when the chat is a private group chat in which the user has been
-  invited and didn't accept the invitation yet, return inviter-name"
-  [contacts chat my-public-key]
-  (when (and (models.chat/group-chat? chat)
-             (joined? my-public-key chat))
-    (let [inviter-pk (get-inviter-pk my-public-key chat)]
-      (get-in contacts [inviter-pk :name]
-              (gfycat/generate-gfy inviter-pk)))))
+(defn group-chat? [chat]
+  (and (:group-chat chat) (not (:public? chat))))

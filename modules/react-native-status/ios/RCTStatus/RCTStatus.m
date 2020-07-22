@@ -110,7 +110,8 @@ RCT_EXPORT_METHOD(moveToInternalStorage:(RCTResponseSenderBlock)onResultCallback
 ////////////////////////////////////////////////////////////////////
 #pragma mark - InitKeystore method
 //////////////////////////////////////////////////////////////////// StopNode
-RCT_EXPORT_METHOD(initKeystore) {
+RCT_EXPORT_METHOD(initKeystore:(NSString *)keyUID
+                      callback:(RCTResponseSenderBlock)callback) {
 #if DEBUG
     NSLog(@"initKeystore() method called");
 #endif
@@ -119,26 +120,16 @@ RCT_EXPORT_METHOD(initKeystore) {
                       URLsForDirectory:NSLibraryDirectory inDomains:NSUserDomainMask]
                      lastObject];
 
-    NSURL *keystoreDir = [rootUrl URLByAppendingPathComponent:@"keystore"];
+    NSURL *commonKeystoreDir = [rootUrl URLByAppendingPathComponent:@"keystore"];
+    NSURL *keystoreDir = [commonKeystoreDir URLByAppendingPathComponent:keyUID];
+    
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
                    ^(void)
                    {
                         NSString *res = StatusgoInitKeystore(keystoreDir.path);
-                        NSLog(@"StopNode result %@", res);
+                        NSLog(@"InitKeyStore result %@", res);
+                        callback(@[]);
                    });
-}
-
-////////////////////////////////////////////////////////////////////
-#pragma mark - SendDataNotification method
-//////////////////////////////////////////////////////////////////// sendDataNotification
-RCT_EXPORT_METHOD(sendDataNotification:(NSString *)dataPayloadJSON
-                  tokensJSON:(NSString *)tokensJSON
-                  callback:(RCTResponseSenderBlock)callback) {
-    NSString* result = StatusgoSendDataNotification(dataPayloadJSON, tokensJSON);
-    callback(@[result]);
-#if DEBUG
-    NSLog(@"SendDataNotification() method called");
-#endif
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -206,16 +197,6 @@ RCT_EXPORT_METHOD(addPeer:(NSString *)enode
   callback(@[result]);
 #if DEBUG
   NSLog(@"AddPeer() method called");
-#endif
-}
-
-//////////////////////////////////////////////////////////////////// updateMailservers
-RCT_EXPORT_METHOD(updateMailservers:(NSString *)enodes
-                  callback:(RCTResponseSenderBlock)callback) {
-  NSString* result = StatusgoUpdateMailservers(enodes);
-  callback(@[result]);
-#if DEBUG
-  NSLog(@"UpdateMailservers() method called");
 #endif
 }
 
@@ -289,6 +270,26 @@ RCT_EXPORT_METHOD(multiAccountStoreDerived:(NSString *)json
     callback(@[result]);
 }
 
+//////////////////////////////////////////////////////////////////// multiAccountImportPrivateKey
+RCT_EXPORT_METHOD(multiAccountImportPrivateKey:(NSString *)json
+                  callback:(RCTResponseSenderBlock)callback) {
+#if DEBUG
+    NSLog(@"MultiAccountImportPrivateKey() method called");
+#endif
+    NSString *result = StatusgoMultiAccountImportPrivateKey(json);
+    callback(@[result]);
+}
+
+//////////////////////////////////////////////////////////////////// hashTransaction
+RCT_EXPORT_METHOD(hashTransaction:(NSString *)txArgsJSON
+                  callback:(RCTResponseSenderBlock)callback) {
+#if DEBUG
+    NSLog(@"HashTransaction() method called");
+#endif
+    NSString *result = StatusgoHashTransaction(txArgsJSON);
+    callback(@[result]);
+}
+
 //////////////////////////////////////////////////////////////////// multiAccountImportMnemonic
 RCT_EXPORT_METHOD(multiAccountImportMnemonic:(NSString *)json
                   callback:(RCTResponseSenderBlock)callback) {
@@ -309,8 +310,19 @@ RCT_EXPORT_METHOD(multiAccountDeriveAddresses:(NSString *)json
     callback(@[result]);
 }
 
+-(NSString *) getKeyUID:(NSString *)jsonString {
+    NSData *data = [jsonString dataUsingEncoding:NSUTF8StringEncoding];
+    NSDictionary *json = [NSJSONSerialization
+                          JSONObjectWithData:data
+                          options:NSJSONReadingMutableContainers
+                          error:nil];
+    
+    return [json valueForKey:@"key-uid"];
+}
+
 //////////////////////////////////////////////////////////////////// prepareDirAndUpdateConfig
--(NSString *) prepareDirAndUpdateConfig:(NSString *)config {
+-(NSString *) prepareDirAndUpdateConfig:(NSString *)config
+                             withKeyUID:(NSString *)keyUID {
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSError *error = nil;
     NSURL *rootUrl =[[fileManager
@@ -338,8 +350,9 @@ RCT_EXPORT_METHOD(multiAccountDeriveAddresses:(NSString *)json
 
     NSLog(@"after remove lightchaindata");
 
-    NSURL *absTestnetKeystoreUrl = [absTestnetFolderName URLByAppendingPathComponent:@"keystore"];
-    NSURL *absKeystoreUrl = [rootUrl URLByAppendingPathComponent:@"keystore"];
+    NSString *keystore = @"keystore";
+    NSURL *absTestnetKeystoreUrl = [absTestnetFolderName URLByAppendingPathComponent:keystore];
+    NSURL *absKeystoreUrl = [rootUrl URLByAppendingPathComponent:keystore];
     if([fileManager fileExistsAtPath:absTestnetKeystoreUrl.path]){
         NSLog(@"copy keystore");
         [fileManager copyItemAtPath:absTestnetKeystoreUrl.path toPath:absKeystoreUrl.path error:nil];
@@ -354,19 +367,23 @@ RCT_EXPORT_METHOD(multiAccountDeriveAddresses:(NSString *)json
     NSString *relativeDataDir = [configJSON objectForKey:@"DataDir"];
     NSString *absDataDir = [rootUrl.path stringByAppendingString:relativeDataDir];
     NSURL *absDataDirUrl = [NSURL fileURLWithPath:absDataDir];
-    NSURL *absLogUrl = [absDataDirUrl URLByAppendingPathComponent:@"geth.log"];
-    [configJSON setValue:absDataDirUrl.path forKey:@"DataDir"];
-    [configJSON setValue:absKeystoreUrl.path forKey:@"KeyStoreDir"];
-    [configJSON setValue:absLogUrl.path forKey:@"LogFile"];
+    NSURL *dataDirUrl = [NSURL fileURLWithPath:relativeDataDir];
+    NSURL *logUrl = [dataDirUrl URLByAppendingPathComponent:@"geth.log"];
+    NSString *keystoreDir = [@"/keystore/" stringByAppendingString:keyUID];
+    [configJSON setValue:keystoreDir forKey:@"KeyStoreDir"];
+    [configJSON setValue:@"" forKey:@"LogDir"];
+    [configJSON setValue:logUrl.path forKey:@"LogFile"];
 
     NSString *resultingConfig = [configJSON bv_jsonStringWithPrettyPrint:NO];
     NSLog(@"node config %@", resultingConfig);
 
-    if(![fileManager fileExistsAtPath:absDataDirUrl.path]) {
-        [fileManager createDirectoryAtPath:absDataDirUrl.path withIntermediateDirectories:YES attributes:nil error:nil];
+    if(![fileManager fileExistsAtPath:absDataDir]) {
+        [fileManager createDirectoryAtPath:absDataDir
+               withIntermediateDirectories:YES attributes:nil error:nil];
     }
 
-    NSLog(@"logUrlPath %@", absLogUrl.path);
+    NSLog(@"logUrlPath %@ rootDir %@", logUrl.path, rootUrl.path);
+    NSURL *absLogUrl = [absDataDirUrl URLByAppendingPathComponent:@"geth.log"];
     if(![fileManager fileExistsAtPath:absLogUrl.path]) {
         NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
         [dict setObject:[NSNumber numberWithInt:511] forKey:NSFilePosixPermissions];
@@ -379,41 +396,69 @@ RCT_EXPORT_METHOD(multiAccountDeriveAddresses:(NSString *)json
 
 
 //////////////////////////////////////////////////////////////////// prepareDirAndUpdateConfig
-RCT_EXPORT_METHOD(prepareDirAndUpdateConfig:(NSString *)config
+RCT_EXPORT_METHOD(prepareDirAndUpdateConfig:(NSString *)keyUID
+                                     config:(NSString *)config
                                    callback:(RCTResponseSenderBlock)callback) {
-
 #if DEBUG
     NSLog(@"PrepareDirAndUpdateConfig() method called");
 #endif
-    NSString *updatedConfig = [self prepareDirAndUpdateConfig:config];
+    NSString *updatedConfig = [self prepareDirAndUpdateConfig:config
+                                                   withKeyUID:keyUID];
     callback(@[updatedConfig]);
-
 }
 
 //////////////////////////////////////////////////////////////////// saveAccountAndLogin
-RCT_EXPORT_METHOD(saveAccountAndLogin:(NSString *)accountData
+RCT_EXPORT_METHOD(saveAccountAndLogin:(NSString *)multiaccountData
                   password:(NSString *)password
+                  settings:(NSString *)settings
                   config:(NSString *)config
-                  subAccountsData:(NSString *)subAccountsData) {
+                  accountsData:(NSString *)accountsData) {
 #if DEBUG
     NSLog(@"SaveAccountAndLogin() method called");
 #endif
-    NSString *finalConfig = [self prepareDirAndUpdateConfig:config];
-    NSString *result = StatusgoSaveAccountAndLogin(accountData, password, finalConfig, subAccountsData);
+    NSString *keyUID = [self getKeyUID:multiaccountData];
+    NSString *finalConfig = [self prepareDirAndUpdateConfig:config
+                                                 withKeyUID:keyUID];
+    NSString *result = StatusgoSaveAccountAndLogin(multiaccountData, password, settings, finalConfig, accountsData);
     NSLog(@"%@", result);
 }
 
 //////////////////////////////////////////////////////////////////// saveAccountAndLoginWithKeycard
-RCT_EXPORT_METHOD(saveAccountAndLoginWithKeycard:(NSString *)accountData
+RCT_EXPORT_METHOD(saveAccountAndLoginWithKeycard:(NSString *)multiaccountData
                   password:(NSString *)password
+                  settings:(NSString *)settings
                   config:(NSString *)config
+                  accountsData:(NSString *)accountsData
                   chatKey:(NSString *)chatKey) {
 #if DEBUG
     NSLog(@"SaveAccountAndLoginWithKeycard() method called");
 #endif
-    NSString *finalConfig = [self prepareDirAndUpdateConfig:config];
-    NSString *result = StatusgoSaveAccountAndLoginWithKeycard(accountData, password, finalConfig, chatKey);
+    NSString *keyUID = [self getKeyUID:multiaccountData];
+    NSString *finalConfig = [self prepareDirAndUpdateConfig:config
+                                                 withKeyUID:keyUID];
+    NSString *result = StatusgoSaveAccountAndLoginWithKeycard(multiaccountData, password, settings, finalConfig, accountsData, chatKey);
     NSLog(@"%@", result);
+}
+
+- (void) migrateKeystore:(NSString *)accountData
+                password:(NSString *)password {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSURL *rootUrl =[[fileManager
+                      URLsForDirectory:NSLibraryDirectory inDomains:NSUserDomainMask]
+                     lastObject];
+
+    NSString *keyUID = [self getKeyUID:accountData];
+    NSURL *oldKeystoreDir = [rootUrl URLByAppendingPathComponent:@"keystore"];
+    NSURL *multiaccountKeystoreDir = [oldKeystoreDir URLByAppendingPathComponent:keyUID];
+    
+    NSArray *keys = [fileManager contentsOfDirectoryAtPath:multiaccountKeystoreDir.path error:nil];
+    if (keys.count == 0) {
+        NSString *migrationResult = StatusgoMigrateKeyStoreDir(accountData, password, oldKeystoreDir.path, multiaccountKeystoreDir.path);
+        NSLog(@"keystore migration result %@", migrationResult);
+        
+        NSString *initKeystoreResult = StatusgoInitKeystore(multiaccountKeystoreDir.path);
+        NSLog(@"InitKeyStore result %@", initKeystoreResult);
+    }
 }
 
 //////////////////////////////////////////////////////////////////// login
@@ -422,6 +467,7 @@ RCT_EXPORT_METHOD(login:(NSString *)accountData
 #if DEBUG
     NSLog(@"Login() method called");
 #endif
+    [self migrateKeystore:accountData password:password];
     NSString *result = StatusgoLogin(accountData, password);
     NSLog(@"%@", result);
 }
@@ -433,6 +479,8 @@ RCT_EXPORT_METHOD(loginWithKeycard:(NSString *)accountData
 #if DEBUG
     NSLog(@"LoginWithKeycard() method called");
 #endif
+    [self migrateKeystore:accountData password:password];
+    
     NSString *result = StatusgoLoginWithKeycard(accountData, password, chatKey);
 
     NSLog(@"%@", result);
@@ -444,7 +492,7 @@ RCT_EXPORT_METHOD(logout) {
     NSLog(@"Logout() method called");
 #endif
     NSString *result = StatusgoLogout();
-    
+
     NSLog(@"%@", result);
 }
 
@@ -598,8 +646,45 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(generateAlias:(NSString *)publicKey) {
   return StatusgoGenerateAlias(publicKey);
 }
 
+RCT_EXPORT_METHOD(generateAliasAsync:(NSString *)publicKey
+                  callback:(RCTResponseSenderBlock)callback) {
+#if DEBUG
+    NSLog(@"generateAliasAsync() method called");
+#endif
+    NSString *result = StatusgoGenerateAlias(publicKey);
+    callback(@[result]);
+}
+
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(identicon:(NSString *)publicKey) {
   return StatusgoIdenticon(publicKey);
+}
+
+RCT_EXPORT_METHOD(validateMnemonic:(NSString *)seed
+                  callback:(RCTResponseSenderBlock)callback) {
+#if DEBUG
+    NSLog(@"validateMnemonic() method called");
+#endif
+    NSString *result = StatusgoValidateMnemonic(seed);
+    callback(@[result]);
+}
+
+RCT_EXPORT_METHOD(identiconAsync:(NSString *)publicKey
+                  callback:(RCTResponseSenderBlock)callback) {
+#if DEBUG
+    NSLog(@"identiconAsync() method called");
+#endif
+    NSString *result = StatusgoIdenticon(publicKey);
+    callback(@[result]);
+}
+
+RCT_EXPORT_METHOD(generateAliasAndIdenticonAsync:(NSString *)publicKey
+                  callback:(RCTResponseSenderBlock)callback) {
+#if DEBUG
+    NSLog(@"generateAliasAndIdenticonAsync() method called");
+#endif
+    NSString *identiconResult = StatusgoIdenticon(publicKey);
+    NSString *aliasResult = StatusgoGenerateAlias(publicKey);
+    callback(@[aliasResult, identiconResult]);
 }
 
 RCT_EXPORT_METHOD(callPrivateRPC:(NSString *)payload

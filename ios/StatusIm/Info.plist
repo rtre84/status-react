@@ -76,15 +76,13 @@
 		</dict>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Please allow Status to use your phone camera</string>
-	<key>NSContactsUsageDescription</key>
-	<string>We need to access your contacts</string>
+	<string>Status uses camera to take pictures and scan QR codes.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>Location access is required for some DApps to function properly.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Location access is required for some DApps to function properly.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Photos access is required to give you the ability to choose custom profile pictures.</string>
+	<string>Photos access is required to give you the ability to send images.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Inter-Bold.otf</string>
@@ -105,6 +103,7 @@
 		<string>Inter-SemiBoldItalic.otf</string>
 		<string>Inter-Thin-BETA.otf</string>
 		<string>Inter-ThinItalic-BETA.otf</string>
+		<string>InterStatus-Regular.otf</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

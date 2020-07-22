@@ -4,47 +4,65 @@
             [status-im.ui.components.colors :as colors]
             [status-im.ui.components.list.views :as list.views]
             [status-im.ui.components.react :as react]
+            [status-im.ui.components.chat-icon.screen :as chat-icon.screen]
             [status-im.i18n :as i18n]
-            [status-im.ui.components.contact.contact :as contact-view]
-            [status-im.ui.components.status-bar.view :as status-bar]
-            [status-im.ui.components.toolbar.view :as toolbar.view])
+            [status-im.ui.components.list-selection :as list-selection]
+            [quo.core :as quo]
+            [status-im.ui.components.topbar :as topbar])
   (:require-macros [status-im.utils.views :refer [defview letsubs]]))
 
 (defn contacts-list-item [{:keys [public-key] :as contact}]
-  [list.views/big-list-item
-   ;;TODO this should be done in a subscription
-   {:text         (multiaccounts/displayed-name contact)
-    :image-source (multiaccounts/displayed-photo contact)
-    :action-fn    #(re-frame/dispatch [:chat.ui/show-profile public-key])}])
+  [quo/list-item
+   {:title    (multiaccounts/displayed-name contact)
+    :icon     [chat-icon.screen/contact-icon-contacts-tab
+               (multiaccounts/displayed-photo contact)]
+    :chevron  true
+    :on-press #(re-frame/dispatch [:chat.ui/show-profile public-key])}])
+
+(defn add-new-contact []
+  [quo/list-item
+   {:icon                :main-icons/add
+    :theme               :accent
+    :title               (i18n/label :t/add-new-contact)
+    :accessibility-label :add-new-contact-button
+    :on-press            #(re-frame/dispatch [:navigate-to :new-contact])}])
 
 (defview contacts-list []
   (letsubs [blocked-contacts-count [:contacts/blocked-count]
             contacts      [:contacts/active]]
     [react/view {:flex 1}
-     [status-bar/status-bar {:type :main}]
-     [toolbar.view/toolbar nil
-      toolbar.view/default-nav-back
-      (toolbar.view/content-title (i18n/label :t/contacts))]
+     [topbar/topbar {:title :t/contacts}]
      [react/scroll-view {:flex 1}
-      [list.views/big-list-item
-       {:style               {:margin-vertical 16}
-        :text                (i18n/label :t/blocked-users)
-        :icon                :main-icons/cancel
-        :icon-color          colors/red
-        :accessibility-label :blocked-users-list-button
-        :accessory-value     blocked-contacts-count
-        :action-fn           #(re-frame/dispatch [:navigate-to :blocked-users-list])}]
-      [list.views/flat-list
-       {:data                      contacts
-        :key-fn                    :address
-        :render-fn                 contacts-list-item}]]]))
+      [add-new-contact]
+      (when (pos? blocked-contacts-count)
+        [react/view {:margin-vertical 16}
+         [quo/list-item
+          {:title               (i18n/label :t/blocked-users)
+           :icon                :main-icons/cancel
+           :theme               :negative
+           :accessibility-label :blocked-users-list-button
+           :chevron             true
+           :accessory           :text
+           :accessory-text      blocked-contacts-count
+           :on-press            #(re-frame/dispatch [:navigate-to :blocked-users-list])}]])
+      (if (seq contacts)
+        [list.views/flat-list
+         {:data                      contacts
+          :key-fn                    :address
+          :render-fn                 contacts-list-item}]
+        [react/view {:align-items :center :flex 1 :justify-content :center}
+         [react/text {:style {:color colors/gray :margin-vertical 24}}
+          (i18n/label :t/you-dont-have-contacts)]
+         [quo/button
+          {:accessibility-label :invite-friends
+           :on-press #(list-selection/open-share {:message (i18n/label :t/get-status-at)})}
+          (i18n/label :t/invite-friends)]])]]))
 
 (defview blocked-users-list []
   (letsubs [blocked-contacts [:contacts/blocked]]
     [react/view {:flex 1
                  :background-color colors/white}
-     [status-bar/status-bar]
-     [toolbar.view/simple-toolbar (i18n/label :t/blocked-users)]
+     [topbar/topbar {:title :t/blocked-users}]
      [react/scroll-view {:style {:background-color colors/white
                                  :padding-vertical 8}}
       [list.views/flat-list

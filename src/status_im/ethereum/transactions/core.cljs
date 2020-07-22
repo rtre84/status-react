@@ -1,16 +1,14 @@
 (ns status-im.ethereum.transactions.core
   (:require [re-frame.core :as re-frame]
-            [status-im.constants :as constants]
             [status-im.ethereum.decode :as decode]
             [status-im.ethereum.eip55 :as eip55]
             [status-im.ethereum.encode :as encode]
             [status-im.ethereum.json-rpc :as json-rpc]
-            [status-im.ethereum.core :as ethereum]
-            [status-im.ethereum.eip55 :as eip55]
-            [status-im.ethereum.tokens :as tokens]
+            [status-im.ens.core :as ens]
             [status-im.utils.fx :as fx]
-            [status-im.utils.money :as money]
-            [status-im.wallet.core :as wallet]))
+            [status-im.wallet.core :as wallet]
+            [taoensso.timbre :as log]
+            [cljs.spec.alpha :as spec]))
 
 (def confirmations-count-threshold 12)
 
@@ -38,8 +36,8 @@
 
 (defn- parse-token-transfer
   [chain-tokens contract]
-  (let [{:keys [nft? symbol] :as token}  (get chain-tokens contract
-                                              default-erc20-token)]
+  (let [{:keys [symbol] :as token} (get chain-tokens contract
+                                        default-erc20-token)]
     {:symbol        symbol
      :token         token
      ;; NOTE(goranjovic) - just a flag we need when we merge this entry
@@ -50,8 +48,8 @@
 
 (defn enrich-transfer
   [chain-tokens
-   {:keys [address blockNumber timestamp type transaction receipt from txStatus
-           txHash gasPrice gasUsed contract value gasLimit input nonce to type id] :as transfer}]
+   {:keys [address blockNumber timestamp from txStatus txHash gasPrice
+           gasUsed contract value gasLimit input nonce to type id]}]
   (let [erc20?  (= type "erc20")
         failed? (= txStatus "0x0")]
     (merge {:address   (eip55/address->checksum address)
@@ -85,6 +83,8 @@
 ;; transactions api
 ;; -----------------------------------------------
 
+(def default-transfers-limit 20)
+
 (fx/defn watch-transaction
   "Set a watch for the given transaction
    `watch-params` needs to contain a `trigger-fn` and `on-trigger` functions
@@ -113,8 +113,12 @@
 (fx/defn check-watched-transactions
   [{:keys [db] :as cofx}]
   (let [watched-transactions
-        (select-keys (get-in db [:wallet :transactions])
-                     (keys (get db :ethereum/watched-transactions)))]
+        (reduce-kv (fn [acc _ {:keys [transactions]}]
+                     (merge acc
+                            (select-keys transactions
+                                         (keys (get db :ethereum/watched-transactions)))))
+                   {}
+                   (get-in db [:wallet :accounts]))]
     (apply fx/merge
            cofx
            (map (fn [[_ transaction]]
@@ -126,10 +130,8 @@
    transaction can contain multiple transfers and they would overwrite each other
    in the transfer map if identified by hash"
   [{:keys [db] :as cofx} {:keys [hash id address] :as transfer}]
-  (let [transfer-by-hash (get-in db [:wallet :accounts address :transactions hash])
-        transfer-by-id   (get-in db [:wallet :accounts address :transactions id])]
-    (when-let [unique-id (when-not (or transfer-by-id
-                                       (= transfer transfer-by-hash))
+  (let [transfer-by-hash (get-in db [:wallet :accounts address :transactions hash])]
+    (when-let [unique-id (when-not (= transfer transfer-by-hash)
                            (if (and transfer-by-hash
                                     (not (= :pending
                                             (:type transfer-by-hash))))
@@ -140,38 +142,183 @@
                                (assoc transfer :hash unique-id))}
                 (check-transaction transfer)))))
 
+(defn get-min-known-block [db address]
+  (get-in db [:wallet :accounts (eip55/address->checksum address) :min-block]))
+
+(defn min-block-transfers-count [db address]
+  (get-in db [:wallet :accounts
+              (eip55/address->checksum address)
+              :min-block-transfers-count]))
+
+(fx/defn set-lowest-fetched-block
+  [{:keys [db]} address transfers]
+  (let [checksum (eip55/address->checksum address)
+        {:keys [min-block min-block-transfers-count]}
+        (reduce
+         (fn [{:keys [min-block] :as acc}
+              {:keys [block hash]}]
+           (cond
+             (or (nil? min-block) (> min-block block))
+             {:min-block                 block
+              :min-block-transfers-count 1}
+
+             (and (= min-block block)
+                  (nil? (get-in db [:wallet :accounts checksum :transactions hash])))
+             (update acc :min-block-transfers-count inc)
+
+             :else acc))
+         {:min-block
+          (get-min-known-block db address)
+
+          :min-block-transfers-count
+          (min-block-transfers-count db address)}
+         transfers)]
+    (log/debug "[transactions] set-lowest-fetched-block"
+               "address" address
+               "min-block" min-block
+               "min-block-transfers-count" min-block-transfers-count)
+    {:db (update-in db [:wallet :accounts checksum] assoc
+                    :min-block min-block
+                    :min-block-transfers-count min-block-transfers-count)}))
+
+(defn update-fetching-status
+  [db addresses fetching-type state]
+  (update-in
+   db [:wallet :fetching]
+   (fn [accounts]
+     (reduce
+      (fn [accounts address]
+        (assoc-in accounts
+                  [(eip55/address->checksum address) fetching-type]
+                  state))
+      accounts
+      addresses))))
+
+(fx/defn tx-fetching-in-progress
+  [{:keys [db]} addresses]
+  {:db (update-fetching-status db addresses :history? true)})
+
+(fx/defn tx-fetching-ended
+  [{:keys [db]} addresses]
+  {:db (update-fetching-status db addresses :history? false)})
+
+(fx/defn tx-history-end-reached
+  [{:keys [db]} address]
+  {:db (assoc-in db [:wallet :fetching address :all-fetched?] true)})
+
+(fx/defn handle-new-transfer
+  [{:keys [db] :as cofx} transfers {:keys [address limit]}]
+  (log/debug "[transfers] new-transfers"
+             "address" address
+             "count" (count transfers)
+             "limit" limit)
+  (let [checksum (eip55/address->checksum address)
+        min-known-block (or (get-min-known-block db address)
+                            (:ethereum/current-block db))
+        effects (cond-> [(when (seq transfers)
+                           (set-lowest-fetched-block checksum transfers))]
+
+                  (seq transfers)
+                  (concat (mapv add-transfer transfers))
+
+                  true
+                  (conj (wallet/update-balances
+                         (into [] (reduce (fn [acc {:keys [address block]}]
+                                            (if (>= block min-known-block)
+                                              (conj acc address)
+                                              acc))
+                                          #{}
+                                          transfers))))
+
+                  (< (count transfers) limit)
+                  (conj (tx-history-end-reached checksum)))]
+    (apply fx/merge cofx (tx-fetching-ended [checksum]) effects)))
+
+(fx/defn check-ens-transactions
+  [{:keys [db] :as cofx} transfers]
+  (let [set-of-transactions-hash (reduce (fn [acc {:keys [hash]}] (conj acc hash)) #{} transfers)
+        registrations (filter
+                       (fn [[hash {:keys [state]}]]
+                         (and
+                          (or (= state :dismissed) (= state :submitted))
+                          (contains? set-of-transactions-hash hash)))
+                       (get db :ens/registrations))
+        fxs (map (fn [[hash {:keys [username custom-domain?]}]]
+                   (let [transfer (first (filter (fn [transfer] (let [transfer-hash (get transfer :hash)] (= transfer-hash hash))) transfers))
+                         type (get transfer :type)
+                         transaction-success (get transfer :transfer)]
+                     (cond
+                       (= transaction-success true)
+                       (fx/merge cofx
+                                 (ens/clear-ens-registration hash)
+                                 (ens/save-username custom-domain? username false))
+                       (= type :failed)
+                       (ens/update-ens-tx-state :failure username custom-domain? hash)
+                       :else
+                       nil)))
+                 registrations)]
+    (apply fx/merge cofx fxs)))
+
 (fx/defn new-transfers
   {:events [::new-transfers]}
-  [{:keys [db] :as cofx} transfers historical?]
-  (let [effects (cond-> (map add-transfer transfers)
-                  ;;NOTE: we only update the balance for new transfers and not historical ones
-                  (not historical?) (conj (wallet/update-balances (into [] (reduce (fn [acc {:keys [address]}]
-                                                                                     (conj acc address))
-                                                                                   #{}
-                                                                                   transfers)))))]
-    (apply fx/merge cofx effects)))
+  [cofx transfers params]
+  (fx/merge cofx
+            (handle-new-transfer transfers params)
+            (check-ens-transactions transfers)))
 
-(fx/defn handle-token-history
-  [{:keys [db]} transactions]
-  {:db (update-in db
-                  [:wallet :transactions]
-                  merge transactions)})
+(fx/defn tx-fetching-failed
+  {:events [::tx-fetching-failed]}
+  [cofx error address]
+  (log/debug "[transactions] tx-fetching-failed"
+             "address" address
+             "error" error)
+  (tx-fetching-ended cofx [address]))
 
 (re-frame/reg-fx
- ::get-transfers
- (fn [{:keys [chain-tokens from-block to-block historical?]
-       :or {from-block "0"
-            to-block nil}}]
-   (json-rpc/call
-    {:method "wallet_getTransfers"
-     :params [(encode/uint from-block) (encode/uint to-block)]
-     :on-success #(re-frame/dispatch [::new-transfers (enrich-transfers chain-tokens %) historical?])})))
+ :transactions/get-transfers
+ (fn [{:keys [chain-tokens addresses before-block limit
+              limit-per-address]
+       :as params
+       :or {limit default-transfers-limit}}]
+   {:pre [(spec/valid?
+           (spec/coll-of string?)
+           addresses)]}
+   (log/debug "[transactions] get-transfers"
+              "addresses" addresses
+              "block" before-block
+              "limit" limit
+              "limit-per-address" limit-per-address)
+   (doseq [address addresses]
+     (let [limit (or (get limit-per-address address)
+                     limit)]
+       (json-rpc/call
+        {:method "wallet_getTransfersByAddress"
+         :params [address (encode/uint before-block) (encode/uint limit)]
+         :on-success #(re-frame/dispatch
+                       [::new-transfers
+                        (enrich-transfers chain-tokens %)
+                        (assoc params :address address
+                               :limit limit)])
+         :on-error #(re-frame/dispatch [::tx-fetching-failed address])})))))
 
-(fx/defn initialize
-  [{:keys [db] :as cofx}]
-  (let [{:keys [:wallet/all-tokens]} db
-        chain (ethereum/chain-keyword db)
-        chain-tokens (into {} (map (juxt :address identity)
-                                   (tokens/tokens-for all-tokens chain)))]
-    {::get-transfers {:chain-tokens chain-tokens
-                      :historical? true}}))
+(fx/defn fetch-more-tx
+  {:events [:transactions/fetch-more]}
+  [{:keys [db] :as cofx} address]
+  (let [min-known-block (or (get-min-known-block db address)
+                            (:ethereum/current-block db))
+        min-block-transfers-count (or (min-block-transfers-count db address) 0)]
+    (fx/merge
+     cofx
+     {:transactions/get-transfers
+      {:chain-tokens          (:wallet/all-tokens db)
+       :addresses             [address]
+       :before-block          min-known-block
+       :historical?           true
+       ;; Transfers are requested before and including `min-known-block` because
+       ;; there is no guarantee that all transfers from that block are shown
+       ;; already. To make sure that we fetch the whole `default-transfers-limit`
+       ;; of transfers the number of transfers already received for
+       ;; `min-known-block` is added to the page size.
+       :limit-per-address {address (+ default-transfers-limit
+                                      min-block-transfers-count)}}}
+     (tx-fetching-in-progress [address]))))

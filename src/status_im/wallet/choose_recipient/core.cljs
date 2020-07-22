@@ -1,6 +1,5 @@
 (ns status-im.wallet.choose-recipient.core
   (:require [re-frame.core :as re-frame]
-            [status-im.constants :as constants]
             [status-im.contact.db :as contact.db]
             [status-im.ethereum.core :as ethereum]
             [status-im.ethereum.eip55 :as eip55]
@@ -8,7 +7,10 @@
             [status-im.ethereum.ens :as ens]
             [status-im.i18n :as i18n]
             [status-im.utils.money :as money]
-            [status-im.utils.fx :as fx]))
+            [status-im.utils.fx :as fx]
+            [status-im.navigation :as navigation]
+            [clojure.string :as string]
+            [status-im.ethereum.stateofus :as stateofus]))
 
 (fx/defn toggle-flashlight
   {:events [:wallet/toggle-flashlight]}
@@ -20,103 +22,136 @@
 (defn- find-address-name [db address]
   (:name (contact.db/find-contact-by-address (:contacts/contacts db) address)))
 
-(defn- fill-request-details [db {:keys [address name value symbol gas gasPrice public-key from-chat?]} request?]
-  {:pre [(not (nil? address))]}
-  (let [name (or name (find-address-name db address))
-        data-path (if request?
-                    [:wallet :request-transaction]
-                    [:wallet :send-transaction])]
-    (update-in db data-path
-               (fn [{old-symbol :symbol :as old-transaction}]
-                 (let [symbol-changed? (not= old-symbol symbol)]
-                   (cond-> (assoc old-transaction :to address :to-name name :public-key public-key)
-                     value (assoc :amount value)
-                     symbol (assoc :symbol symbol)
-                     (and gas symbol-changed?) (assoc :gas (money/bignumber gas))
-                     from-chat? (assoc :from-chat? from-chat?)
-                     (and gasPrice symbol-changed?)
-                     (assoc :gas-price (money/bignumber gasPrice))
-                     (and symbol (not gasPrice) symbol-changed?)
-                     (assoc :gas-price (ethereum/estimate-gas symbol))))))))
-
-(defn- extract-details
-  "First try to parse as EIP681 URI, if not assume this is an address directly.
-   Returns a map containing at least the `address` and `chain-id` keys"
-  [s chain-id all-tokens]
-  (or (let [m (eip681/parse-uri s)]
-        (merge m (eip681/extract-request-details m all-tokens)))
-      (when (ethereum/address? s)
-        {:address s :chain-id chain-id})))
-
-;; NOTE(janherich) - whenever changing assets, we want to clear the previusly set amount/amount-text
-(defn changed-asset [{:keys [db] :as fx} old-symbol new-symbol]
-  (-> fx
-      (merge {:wallet/update-gas-price
-              {:success-event :wallet/update-gas-price-success
-               :edit?         false}})
-      (assoc-in [:db :wallet :send-transaction :amount] nil)
-      (assoc-in [:db :wallet :send-transaction :amount-text] nil)
-      (assoc-in [:db :wallet :send-transaction :asset-error]
-                (i18n/label :t/changed-asset-warning {:old old-symbol :new new-symbol}))))
-
-(defn changed-amount-warning [fx old-amount new-amount]
-  (assoc-in fx [:db :wallet :send-transaction :amount-error]
-            (i18n/label :t/changed-amount-warning {:old old-amount :new new-amount})))
-
 (defn use-default-eth-gas [fx]
   (assoc-in fx [:db :wallet :send-transaction :gas]
             ethereum/default-transaction-gas))
 
 (re-frame/reg-fx
- :resolve-address
+ ::resolve-address
  (fn [{:keys [registry ens-name cb]}]
    (ens/get-addr registry ens-name cb)))
 
+(re-frame/reg-fx
+ ::resolve-addresses
+ (fn [{:keys [registry ens-names callback]}]
+   ;; resolve all addresses then call the callback function with the array of
+   ;;addresses as parameter
+   (-> (js/Promise.all
+        (clj->js (mapv (fn [ens-name]
+                         (js/Promise.
+                          (fn [resolve _]
+                            (ens/get-addr registry ens-name resolve))))
+                       ens-names)))
+       (.then callback)
+       (.catch (fn [error]
+                 (js/console.log error))))))
+
 (fx/defn set-recipient
-  {:events [:wallet.send/set-recipient]}
-  [{:keys [db]} recipient]
-  (let [chain (ethereum/chain-keyword db)]
-    (if (ens/is-valid-eth-name? recipient)
-      {:resolve-address {:registry (get ens/ens-registries chain)
-                         :ens-name recipient
-                         :cb       #(re-frame/dispatch [:wallet.send/set-recipient %])}}
-      (if (ethereum/address? recipient)
-        (let [checksum (eip55/address->checksum recipient)]
-          (if (eip55/valid-address-checksum? checksum)
-            {:db       (assoc-in db [:wallet :send-transaction :to] checksum)
-             :dispatch [:navigate-back]}
-            {:ui/show-error (i18n/label :t/wallet-invalid-address-checksum {:data recipient})}))
-        {:ui/show-error (i18n/label :t/wallet-invalid-address {:data recipient})}))))
+  {:events [:wallet.send/set-recipient ::recipient-address-resolved]}
+  [{:keys [db]} raw-recipient]
+  (let [chain (ethereum/chain-keyword db)
+        recipient (when raw-recipient (string/trim raw-recipient))]
+    (cond
+      (ethereum/address? recipient)
+      (let [checksum (eip55/address->checksum recipient)]
+        (if (eip55/valid-address-checksum? checksum)
+          {:db       (-> db
+                         (assoc-in [:wallet/prepare-transaction :to] checksum)
+                         (assoc-in [:wallet/prepare-transaction :modal-opened?] false))
+           :dispatch [:navigate-back]}
+          {:ui/show-error (i18n/label :t/wallet-invalid-address-checksum {:data recipient})}))
+      (not (string/blank? recipient))
+      {::resolve-address {:registry (get ens/ens-registries chain)
+                          :ens-name (if (= (.indexOf ^js recipient ".") -1)
+                                      (stateofus/subdomain recipient)
+                                      recipient)
+                          :cb       #(re-frame/dispatch [::recipient-address-resolved %])}}
+      :else
+      {:ui/show-error (i18n/label :t/wallet-invalid-address {:data recipient})})))
 
-(fx/defn fill-request-from-url
-  {:events [:wallet/fill-request-from-url]}
-  [{{:networks/keys [current-network] :wallet/keys [all-tokens] :as db} :db} data origin]
-  (let [current-chain-id                       (get-in constants/default-networks [current-network :config :NetworkId])
-        {:keys [address chain-id] :as details} (extract-details data current-chain-id all-tokens)
-        valid-network?                         (boolean (= current-chain-id chain-id))
-        previous-state                         (get-in db [:wallet :send-transaction])
-        old-symbol                             (:symbol previous-state)
-        new-symbol                             (:symbol details)
-        old-amount                             (:amount previous-state)
-        new-amount                             (:value details)
-        new-gas                                (:gas details)
-        symbol-changed?                        (and old-symbol new-symbol (not= old-symbol new-symbol))]
-    (cond-> {:db db}
-      (not= :deep-link origin) (assoc :dispatch [:navigate-back]) ;; Only navigate-back when called from within wallet
-      (and address valid-network?) (update :db #(fill-request-details % details false))
-      symbol-changed? (changed-asset old-symbol new-symbol)
-      (and old-amount new-amount (not= old-amount new-amount)) (changed-amount-warning old-amount new-amount)
-       ;; NOTE(goranjovic) - the next line is there is because QR code scanning switches the amount to ETH
-       ;; automatically, so we need to update the gas limit accordingly. The check for origin screen is there
-       ;; so that we wouldn't also switch gas limit to ETH specific if the user pastes address as text.
-       ;; We need to check if address is defined so that we wouldn't trigger this behavior when invalid QR is scanned
-       ;; (e.g. public-key)
-      (and address (= origin :qr) (not new-gas) symbol-changed?) (use-default-eth-gas)
-      (not address) (assoc :ui/show-error (i18n/label :t/wallet-invalid-address {:data data}))
-      (and address (not valid-network?)) (assoc :ui/show-error (i18n/label :t/wallet-invalid-chain-id {:data data :chain current-chain-id})))))
+(defn- fill-prepare-transaction-details
+  [db
+   {:keys [address name value symbol gas gasPrice gasLimit]
+    :or   {symbol :ETH}}
+   all-tokens]
+  (assoc db :wallet/prepare-transaction
+         (cond-> {:to      address
+                  :to-name (or name (find-address-name db address))
+                  :from    (ethereum/get-default-account
+                            (get db :multiaccount/accounts))}
+           gas (assoc :gas (money/bignumber gas))
+           gasLimit  (assoc :gas (money/bignumber gasLimit))
+           gasPrice (assoc :gasPrice (money/bignumber gasPrice))
+           value (assoc :amount-text
+                        (if (= :ETH symbol)
+                          (str (money/internal->formatted value symbol (get all-tokens symbol)))
+                          (str value)))
+           symbol (assoc :symbol symbol))))
 
-(fx/defn fill-request-from-contact
-  {:events [:wallet/fill-request-from-contact]}
-  [{db :db} {:keys [address name public-key]} request?]
-  {:db         (fill-request-details db {:address address :name name :public-key public-key} request?)
-   :dispatch   [:navigate-back]})
+(fx/defn request-uri-parsed
+  {:events [:wallet/request-uri-parsed]}
+  [{{:networks/keys [networks current-network]
+     :wallet/keys   [all-tokens] :as db} :db}
+   {:keys [chain-id] :as data}
+   uri]
+  (let [{:keys [address] :as details}
+        (eip681/extract-request-details data all-tokens)]
+    (if address
+      (if (:wallet/prepare-transaction db)
+        {:db (update db :wallet/prepare-transaction assoc
+                     :to address :to-name (find-address-name db address))}
+        (let [current-chain-id (get-in networks [current-network :config :NetworkId])]
+          (merge {:db (fill-prepare-transaction-details db details all-tokens)}
+                 (when (and chain-id (not= current-chain-id chain-id))
+                   {:ui/show-error (i18n/label :t/wallet-invalid-chain-id
+                                               {:data uri :chain current-chain-id})}))))
+      {:ui/show-error (i18n/label :t/wallet-invalid-address {:data uri})})))
+
+(fx/defn qr-scanner-cancel
+  {:events [:wallet.send/qr-scanner-cancel]}
+  [{db :db} _]
+  {:db (assoc-in db [:wallet/prepare-transaction :modal-opened?] false)})
+
+(fx/defn parse-eip681-uri-and-resolve-ens
+  [{db :db :as cofx} uri]
+  (if-let [message (eip681/parse-uri uri)]
+    ;; first we get a vector of ens-names to resolve and a vector of paths of
+    ;; these names
+    (let [{:keys [paths ens-names]}
+          (reduce (fn [acc path]
+                    (let [address (get-in message path)]
+                      (if (ens/is-valid-eth-name? address)
+                        (-> acc
+                            (update :paths conj path)
+                            (update :ens-names conj address))
+                        acc)))
+                  {:paths [] :ens-names []}
+                  [[:address] [:function-arguments :address]])]
+      (println "message" message)
+      (if (empty? ens-names)
+        ;; if there are no ens-names, we dispatch request-uri-parsed immediately
+        (request-uri-parsed cofx message uri)
+        {::resolve-addresses
+         {:registry (get ens/ens-registries (ethereum/chain-keyword db))
+          :ens-names ens-names
+          :callback
+          (fn [addresses]
+            (re-frame/dispatch
+             [:wallet/request-uri-parsed
+              ;; we replace ens-names at their path in the message by their
+              ;; actual address
+              (reduce (fn [message [path address]]
+                        (assoc-in message path address))
+                      message
+                      (map vector paths addresses)) uri]))}}))
+    {:ui/show-error (i18n/label :t/wallet-invalid-address {:data uri})}))
+
+(fx/defn qr-scanner-result
+  {:events [:wallet.send/qr-scanner-result]}
+  [cofx data _]
+  (fx/merge cofx
+            (navigation/navigate-back)
+            (parse-eip681-uri-and-resolve-ens data)
+            (fn [{:keys [db]}]
+              (when (get-in db [:wallet/prepare-transaction :modal-opened?])
+                {:db (assoc-in db [:wallet/prepare-transaction :modal-opened?] false)}))))

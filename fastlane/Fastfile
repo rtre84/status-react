@@ -82,30 +82,47 @@ def upload_to_saucelabs(file)
 end
 
 # builds an ios app with ad-hoc configuration and put it
-# to "status-adhoc" output folder
+# to "status-ios" output folder
 # `readonly`:
 #    if true  - only fetch existing certificates and profiles, don't upgrade from AppStoreConnect
 #    if false - read list of devices from AppStoreConnect, and upgrade the provisioning profiles from it
-def build_ios_adhoc(readonly)
+# `pr_build`:
+#    if true  - uses StatusImPR scheme and postfixed app id with `.pr` to build an app, which can be used in parallel with release
+#    if false - uses StatusIm scheme to build the release app 
+
+def build_ios_adhoc(readonly: false, pr_build: false)
+  # PR builds should appear as a separate App on iOS
+  scheme = pr_build ? 'StatusImPR' : 'StatusIm'
+  app_id = pr_build ? 'im.status.ethereum.pr' : 'im.status.ethereum'
+
   match(
     type: 'adhoc',
     force_for_new_devices: true,
     readonly: readonly,
+    app_identifier: app_id,
     keychain_name: 'login.keychain'
   )
 
   build_ios_app(
-    scheme: 'StatusIm',
+    scheme: scheme,
     workspace: 'ios/StatusIm.xcworkspace',
     configuration: 'Release',
     clean: true,
     export_method: 'ad-hoc',
-    output_directory: 'status-adhoc'
+    output_name: 'StatusIm',
+    output_directory: 'status-ios',
+    export_options: {
+      signingStyle: 'manual',
+      provisioningProfiles: {
+        "im.status.ethereum": "match AdHoc im.status.ethereum",
+        "im.status.ethereum.pr": "match AdHoc im.status.ethereum.pr"
+      }
+    }
   )
 end
 
 # builds an ios app with e2e configuration and put it
-# to "status-e2e" output folder
+# to "status-ios" output folder
 def build_ios_e2e
   # determine a simulator SDK installed
   showsdks_output = sh('xcodebuild', '-showsdks')
@@ -127,7 +144,7 @@ def build_ios_e2e
     #    it looks like i386 isn't supported by React Native
     xcargs: 'ARCHS="x86_64" ONLY_ACTIVE_ARCH=NO',
     # 3. directory where to up StatusIm.app
-    derived_data_path: 'status-e2e',
+    derived_data_path: 'status-ios',
     output_name: 'StatusIm.app',
     # -------------------------------------
     # Normal stuff
@@ -141,8 +158,8 @@ def build_ios_e2e
   )
 
   zip(
-    path: 'status-e2e/Build/Products/Release-iphonesimulator/StatusIm.app',
-    output_path: 'status-e2e/StatusIm.app.zip',
+    path: 'status-ios/Build/Products/Release-iphonesimulator/StatusIm.app',
+    output_path: 'status-ios/StatusIm.app.zip',
     verbose: false
   )
 end
@@ -150,7 +167,8 @@ end
 def upload_to_diawi(source)
   diawi(
     file: source,
-    last_hope_attempts_count: 3,
+    timeout: 120,
+    check_status_delay: 5,
     token: ENV['DIAWI_TOKEN']
   )
   # save the URL to a file for use in CI
@@ -164,7 +182,7 @@ platform :ios do
   desc 'This .ipa is ready to be distibuted through diawi.com'
   lane :adhoc do
     unlock_keychain_if_needed
-    build_ios_adhoc(true)
+    build_ios_adhoc(readonly: true)
   end
 
   desc '`fastlane ios e2e` - e2e lane for iOS.'
@@ -179,14 +197,14 @@ platform :ios do
   desc 'This lane builds a new adhoc build and leaves an .ipa that is ad-hoc signed (can be uploaded to diawi)'
   lane :pr do
     unlock_keychain_if_needed
-    build_ios_adhoc(false)
+    build_ios_adhoc(pr_build: true)
   end
 
   desc '`fastlane ios nightly` - makes a new nightly'
   desc 'This lane builds a new nightly and leaves an .ipa that is ad-hoc signed (can be uploaded to diawi)'
   lane :nightly do
     unlock_keychain_if_needed
-    build_ios_adhoc(false)
+    build_ios_adhoc()
   end
 
   desc '`fastlane ios release` builds a release & uploads it to TestFlight'
@@ -194,6 +212,7 @@ platform :ios do
     match(
       type: 'appstore',
       readonly: true,
+      app_identifier: 'im.status.ethereum',
       keychain_name: 'login.keychain'
     )
 
@@ -203,7 +222,7 @@ platform :ios do
       configuration: 'Release',
       clean: true,
       export_method: 'app-store',
-      output_directory: 'status_appstore',
+      output_directory: 'status-ios',
       include_symbols: false,
       export_options: {
         "combileBitcode": true,
@@ -212,7 +231,8 @@ platform :ios do
       }
     )
     upload_to_testflight(
-      ipa: 'status_appstore/StatusIm.ipa'
+      ipa: 'status-ios/StatusIm.ipa',
+      skip_waiting_for_build_processing: true
     )
   end
 
@@ -220,20 +240,20 @@ platform :ios do
   lane :clean do
     clean_testflight_testers(
       username: ENV['FASTLANE_APPLE_ID'],
-      days_of_inactivity: 30,
-      oldest_build_allowed: 2_019_032_709
+      days_of_inactivity: 30
     )
+    # In the future we can try using 'oldest_build_allowed'
   end
 
   desc '`fastlane ios upload-diawi` - upload .ipa to diawi'
-  desc 'expects to have an .ipa prepared: `status-adhoc/StatusIm.ipa`'
+  desc 'expects to have an .ipa prepared: `status-ios/StatusIm.ipa`'
   desc 'expects to have a diawi token as DIAWI_TOKEN env variable'
   desc 'expects to have a github token as GITHUB_TOKEN env variable'
   desc "will fails if file isn't there"
   desc '---'
   desc 'Output: writes `fastlane/diawi.out` file url of the uploded file'
   lane :upload_diawi do
-    ipa = ENV['DIAWI_IPA'] || 'status-adhoc/StatusIm.ipa'
+    ipa = ENV['DIAWI_IPA'] || 'status-ios/StatusIm.ipa'
     upload_to_diawi(ipa)
   end
 
@@ -246,7 +266,7 @@ platform :ios do
   desc "will fails if file isn't there"
   lane :saucelabs do
     upload_to_saucelabs(
-      'status-e2e/StatusIm.app.zip'
+      'status-ios/StatusIm.app.zip'
     )
   end
 
@@ -287,7 +307,14 @@ platform :android do
   lane :upload_metadata do
     upload_to_play_store(
       skip_upload_apk: true,
-      json_key_data: ENV['GOOGLE_PLAY_JSON_KEY']
+      skip_upload_changelogs: true,
+      json_key_data: ENV['GOOGLE_PLAY_JSON_KEY'],
+      # These don't matter much as we're not uploading any new builds
+      # and indeed, we're skipping changelogs. This is just so that
+      # the library can find what it thinks it needs and continue with
+      # the work we actually want it to do.
+      track: 'production',
+      version_code: '2020042307'
     )
   end
 

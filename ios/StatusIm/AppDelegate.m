@@ -13,12 +13,31 @@
 #import "ReactNativeConfig.h"
 #import "React/RCTLog.h"
 #import "RCTBundleURLProvider.h"
-#import "RCTRootView.h"
 #import "RNSplashScreen.h"
 #import "RCTLinkingManager.h"
-#import <Firebase.h>
-#import "RNFirebaseNotifications.h"
-#import "RNFirebaseMessaging.h"
+
+#import <React/RCTBridge.h>
+#import <React/RCTBundleURLProvider.h>
+#import <React/RCTRootView.h>
+
+#if DEBUG
+#import <FlipperKit/FlipperClient.h>
+#import <FlipperKitLayoutPlugin/FlipperKitLayoutPlugin.h>
+#import <FlipperKitUserDefaultsPlugin/FKUserDefaultsPlugin.h>
+#import <FlipperKitNetworkPlugin/FlipperKitNetworkPlugin.h>
+#import <SKIOSNetworkPlugin/SKIOSNetworkAdapter.h>
+#import <FlipperKitReactPlugin/FlipperKitReactPlugin.h>
+
+static void InitializeFlipper(UIApplication *application) {
+  FlipperClient *client = [FlipperClient sharedClient];
+  SKDescriptorMapper *layoutDescriptorMapper = [[SKDescriptorMapper alloc] initWithDefaults];
+  [client addPlugin:[[FlipperKitLayoutPlugin alloc] initWithRootNode:application withDescriptorMapper:layoutDescriptorMapper]];
+  [client addPlugin:[[FKUserDefaultsPlugin alloc] initWithSuiteName:nil]];
+  [client addPlugin:[FlipperKitReactPlugin new]];
+  [client addPlugin:[[FlipperKitNetworkPlugin alloc] initWithNetworkAdapter:[SKIOSNetworkAdapter new]]];
+  [client start];
+}
+#endif
 
 @implementation AppDelegate 
 {
@@ -27,13 +46,11 @@
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
+  #if DEBUG
+    InitializeFlipper(application);
+  #endif
   signal(SIGPIPE, SIG_IGN);
   NSURL *jsCodeLocation;
-
-  [FIRApp configure];
-  [RNFirebaseNotifications configure];
-  [application registerForRemoteNotifications];
-
 
   /* Set logging level from React Native */
   NSString *logLevel = [ReactNativeConfig envFor:@"LOG_LEVEL"];
@@ -72,19 +89,6 @@
   [RNSplashScreen show];
 
   return YES;
-}
-
-- (void)application:(UIApplication *)application didReceiveLocalNotification:(UILocalNotification *)notification {
-  [[RNFirebaseNotifications instance] didReceiveLocalNotification:notification];
-}
-
-- (void)application:(UIApplication *)application didReceiveRemoteNotification:(nonnull NSDictionary *)userInfo
-                                                       fetchCompletionHandler:(nonnull void (^)(UIBackgroundFetchResult))completionHandler{
-  [[RNFirebaseNotifications instance] didReceiveRemoteNotification:userInfo fetchCompletionHandler:completionHandler];
-}
-
-- (void)application:(UIApplication *)application didRegisterUserNotificationSettings:(UIUserNotificationSettings *)notificationSettings {
-  [[RNFirebaseMessaging instance] didRegisterUserNotificationSettings:notificationSettings];
 }
 
 - (BOOL)application:(UIApplication *)application

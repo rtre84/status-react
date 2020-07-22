@@ -1,127 +1,101 @@
 (ns status-im.data-store.messages
   (:require [clojure.set :as clojure.set]
-            [re-frame.core :as re-frame]
-            [status-im.utils.fx :as fx]
-            [clojure.string :as string]
-            [taoensso.timbre :as log]
-            [re-frame.core :as re-frame]
             [status-im.ethereum.json-rpc :as json-rpc]
-            [status-im.constants :as constants]
-            [status-im.utils.core :as utils]))
+            [status-im.utils.fx :as fx]
+            [status-im.waku.core :as waku]
+            [taoensso.timbre :as log]))
 
-(defn prepare-content [content]
-  (if (string? content)
+(defn ->rpc [{:keys [content] :as message}]
+  (cond-> message
     content
-    (pr-str content)))
-
-(defn ->rpc [message]
-  (-> message
-      (dissoc :js-obj :dedup-id)
-      (update :message-type name)
-      (update :outgoing-status #(if % (name %) ""))
-      (utils/update-if-present :content prepare-content)
-      (clojure.set/rename-keys {:message-id :id
-                                :whisper-timestamp :whisperTimestamp
-                                :message-type :messageType
-                                :chat-id :chatId
-                                :content-type :contentType
-                                :clock-value :clockValue
-                                :outgoing-status :outgoingStatus})
-      (assoc :replyTo (get-in message [:content :response-to-v2]))))
-
-(defn update-quoted-message [message]
-  (let [parsed-content (utils/safe-read-message-content (get-in message [:quotedMessage :content]))]
-    (cond-> message
-      parsed-content
-      (assoc :quoted-message {:from (get-in message [:quotedMessage :from])
-                              :text (:text parsed-content)})
-      :always
-      (dissoc message :quotedMessage))))
+    (assoc :text (:text content)
+           :sticker (:sticker content))
+    :always
+    (clojure.set/rename-keys {:chat-id :chatId
+                              :clock-value :clock})))
 
 (defn <-rpc [message]
-  (when-let [parsed-content (utils/safe-read-message-content (:content message))]
-    (let [outgoing-status (when-not (empty? (:outgoingStatus message))
-                            (keyword (:outgoingStatus message)))]
+  (-> message
+      (clojure.set/rename-keys {:id :message-id
+                                :whisperTimestamp :whisper-timestamp
+                                :commandParameters :command-parameters
+                                :messageType :message-type
+                                :localChatId :chat-id
+                                :contentType  :content-type
+                                :clock  :clock-value
+                                :quotedMessage :quoted-message
+                                :outgoingStatus :outgoing-status})
 
-      (-> message
-          (update :messageType keyword)
-          (update :outgoingStatus keyword)
-          (assoc :content parsed-content
-                 :outgoingStatus outgoing-status
-                 :outgoing outgoing-status)
-          (update-quoted-message)
-          (clojure.set/rename-keys {:id :message-id
-                                    :whisperTimestamp :whisper-timestamp
-                                    :messageType :message-type
-                                    :chatId :chat-id
-                                    :contentType  :content-type
-                                    :replyTo :reply-to
-                                    :clockValue  :clock-value
-                                    :outgoingStatus :outgoing-status})))))
+      (update :outgoing-status keyword)
+      (update :command-parameters clojure.set/rename-keys {:transactionHash :transaction-hash
+                                                           :commandState :command-state})
+      (assoc :content {:chat-id (:chatId message)
+                       :text (:text message)
+                       :image (:image message)
+                       :sticker (:sticker message)
+                       :ens-name (:ensName message)
+                       :line-count (:lineCount message)
+                       :parsed-text (:parsedText message)
+                       :rtl? (:rtl message)
+                       :response-to (:responseTo message)}
+             :outgoing (boolean (:outgoingStatus message)))
+      (dissoc :ensName :chatId :text :rtl :responseTo :image :sticker :lineCount :parsedText)))
 
-(defn update-outgoing-status-rpc [message-id status]
-  {::json-rpc/call [{:method "shhext_updateMessageOutgoingStatus"
+(defn update-outgoing-status-rpc [waku-enabled? message-id status]
+  {::json-rpc/call [{:method (json-rpc/call-ext-method waku-enabled? "updateMessageOutgoingStatus")
                      :params [message-id status]
                      :on-success #(log/debug "updated message outgoing stauts" message-id status)
                      :on-failure #(log/error "failed to update message outgoing status" message-id status %)}]})
 
-(defn save-messages-rpc [messages]
-  (let [confirmations (keep :metadata messages)]
-    (json-rpc/call {:method "shhext_saveMessages"
-                    :params [(map ->rpc messages)]
-                    :on-success #(re-frame/dispatch [:message/messages-persisted confirmations])
-                    :on-failure #(log/error "failed to save messages" %)})))
-
-(defn messages-by-chat-id-rpc [chat-id cursor limit on-success]
-  {::json-rpc/call [{:method "shhext_chatMessages"
+(defn messages-by-chat-id-rpc [waku-enabled?
+                               chat-id
+                               cursor
+                               limit
+                               on-success
+                               on-failure]
+  {::json-rpc/call [{:method (json-rpc/call-ext-method waku-enabled? "chatMessages")
                      :params [chat-id cursor limit]
                      :on-success (fn [result]
                                    (on-success (update result :messages #(map <-rpc %))))
+                     :on-failure on-failure}]})
+
+(defn mark-seen-rpc [waku-enabled? chat-id ids on-success]
+  {::json-rpc/call [{:method (json-rpc/call-ext-method waku-enabled? "markMessagesSeen")
+                     :params [chat-id ids]
+                     :on-success #(do
+                                    (log/debug "successfully marked as seen" %)
+                                    (when on-success (on-success chat-id ids %)))
                      :on-failure #(log/error "failed to get messages" %)}]})
 
-(defn mark-seen-rpc [ids]
-  {::json-rpc/call [{:method "shhext_markMessagesSeen"
-                     :params [ids]
-                     :on-success #(log/debug "successfully marked as seen")
-                     :on-failure #(log/error "failed to get messages" %)}]})
-
-(defn delete-message-rpc [id]
-  {::json-rpc/call [{:method "shhext_deleteMessage"
+(defn delete-message-rpc [waku-enabled? id]
+  {::json-rpc/call [{:method (json-rpc/call-ext-method waku-enabled? "deleteMessage")
                      :params [id]
                      :on-success #(log/debug "successfully deleted message" id)
                      :on-failure #(log/error "failed to delete message" % id)}]})
 
-(defn delete-messages-from-rpc [author]
-  {::json-rpc/call [{:method "shhext_deleteMessagesFrom"
+(defn delete-messages-from-rpc [waku-enabled? author]
+  {::json-rpc/call [{:method (json-rpc/call-ext-method waku-enabled? "deleteMessagesFrom")
                      :params [author]
                      :on-success #(log/debug "successfully deleted messages from" author)
                      :on-failure #(log/error "failed to delete messages from" % author)}]})
 
-(defn delete-messages-by-chat-id-rpc [chat-id]
-  {::json-rpc/call [{:method "shhext_deleteMessagesByChatID"
+(defn delete-messages-by-chat-id-rpc [waku-enabled? chat-id]
+  {::json-rpc/call [{:method (json-rpc/call-ext-method waku-enabled? "deleteMessagesByChatID")
                      :params [chat-id]
                      :on-success #(log/debug "successfully deleted messages by chat-id" chat-id)
                      :on-failure #(log/error "failed to delete messages by chat-id" % chat-id)}]})
 
-(re-frame/reg-fx
- ::save-message
- (fn [messages]
-   (save-messages-rpc messages)))
-
-(fx/defn save-message [cofx message]
-  {::save-message [message]})
-
 (fx/defn delete-message [cofx id]
-  (delete-message-rpc id))
+  (delete-message-rpc (waku/enabled? cofx) id))
 
 (fx/defn delete-messages-from [cofx author]
-  (delete-messages-from-rpc author))
+  (delete-messages-from-rpc (waku/enabled? cofx) author))
 
-(fx/defn mark-messages-seen [_ ids]
-  (mark-seen-rpc ids))
+(fx/defn mark-messages-seen [cofx chat-id ids on-success]
+  (mark-seen-rpc (waku/enabled? cofx) chat-id ids on-success))
 
 (fx/defn update-outgoing-status [cofx message-id status]
-  (update-outgoing-status-rpc message-id status))
+  (update-outgoing-status-rpc (waku/enabled? cofx) message-id status))
 
 (fx/defn delete-messages-by-chat-id [cofx chat-id]
-  (delete-messages-by-chat-id-rpc chat-id))
+  (delete-messages-by-chat-id-rpc (waku/enabled? cofx) chat-id))

@@ -1,16 +1,14 @@
 (ns status-im.tribute-to-talk.db
   (:require [status-im.ethereum.core :as ethereum]
             [status-im.i18n :as i18n]
-            [status-im.js-dependencies :as dependencies]
-            [status-im.utils.money :as money]))
+            [status-im.utils.money :as money]
+            ["web3-utils" :as utils]))
 
 (defn tribute-received?
   [contact]
   (contains? (:system-tags contact) :tribute-to-talk/received))
 
 (def max-snt-amount 1000000)
-
-(def utils dependencies/web3-utils)
 
 (defn to-wei
   [s]
@@ -23,7 +21,7 @@
     (.fromWei utils s)))
 
 (defn tribute-status
-  [{:keys [system-tags tribute-to-talk] :as contact}]
+  [{:keys [system-tags tribute-to-talk]}]
   (let [{:keys [snt-amount transaction-hash]} tribute-to-talk]
     (cond (contains? system-tags :tribute-to-talk/paid) :paid
           (not (nil? transaction-hash)) :pending
@@ -46,12 +44,12 @@
            (and (= (to-wei converted-snt-amount)
                    snt-amount)
                 (< 0 (js/parseFloat converted-snt-amount) max-snt-amount)))
-         (catch :default err nil))))
+         (catch :default _ nil))))
 
 (defn get-settings
   [db]
   (let [chain-keyword (ethereum/chain-keyword db)]
-    (get-in db [:multiaccount :settings :tribute-to-talk chain-keyword])))
+    (get-in db [:multiaccount :tribute-to-talk chain-keyword])))
 
 (defn enabled?
   [settings]
@@ -67,7 +65,7 @@
     (and transaction
          (pos? (- current-block
                   (js/parseInt transaction-block)))
-         (.lessThanOrEqualTo (money/bignumber tribute-required)
+         (.lessThanOrEqualTo ^js (money/bignumber tribute-required)
                              (money/bignumber value))
          (ethereum/address= (ethereum/public-key->address from-public-key)
                             from))))

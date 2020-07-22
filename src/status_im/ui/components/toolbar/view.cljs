@@ -1,17 +1,12 @@
 (ns status-im.ui.components.toolbar.view
-  (:require-macros [status-im.utils.views :refer [defview letsubs]])
   (:require [re-frame.core :as re-frame]
-            [status-im.i18n :as i18n]
+            [status-im.ui.components.colors :as colors]
             [status-im.ui.components.icons.vector-icons :as vector-icons]
             [status-im.ui.components.list-selection :as list-selection]
             [status-im.ui.components.react :as react]
-            [status-im.ui.components.styles :as components.styles]
             [status-im.ui.components.toolbar.actions :as actions]
             [status-im.ui.components.toolbar.styles :as styles]
-            [status-im.utils.platform :as platform]
-            [status-im.utils.core :as utils]
-            [status-im.ui.components.colors :as colors]
-            [status-im.ui.components.common.common :as components.common]))
+            [status-im.utils.core :as utils]))
 
 ;; Navigation item
 
@@ -33,25 +28,15 @@
 (defn nav-text
   ([text] (nav-text nil text))
   ([{:keys [handler] :as props} text]
-   [react/text (utils/deep-merge {:style    styles/item-text
-                                  :on-press (or handler #(re-frame/dispatch [:navigate-back]))}
-                                 props)
-    text]))
+   [react/touchable-highlight {:on-press (or handler #(re-frame/dispatch [:navigate-back]))}
+    [react/text (utils/deep-merge {:style styles/item-text}
+                                  props)
+     text]]))
 
-(defn nav-clear-text
-  ([text] (nav-clear-text nil text))
-  ([props text]
-   (nav-text (merge props styles/item-text-white-background) text)))
-
-(def nav-back-home [nav-button actions/home-back])
 (def default-nav-back [nav-button actions/default-back])
 (def default-nav-close [nav-button actions/default-close])
 
 ;; Content
-
-(defn content-wrapper [content]
-  [react/view {:style {:flex 1}}
-   content])
 
 (defn content-title
   ([title] (content-title nil title))
@@ -163,10 +148,3 @@
                  :justify-content :center
                  :align-items     :center}
      action-items]]))
-
-;;TODO remove
-(defn simple-toolbar
-  "A simple toolbar composed of a nav-back item and a single line title."
-  ([] (simple-toolbar nil))
-  ([title] (simple-toolbar title false))
-  ([title modal?] (toolbar nil (if modal? default-nav-close default-nav-back) [content-title title])))

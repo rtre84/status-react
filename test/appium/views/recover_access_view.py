@@ -2,41 +2,37 @@ from views.base_element import BaseEditBox, BaseButton, BaseElement
 from views.sign_in_view import SignInView
 
 
-class PassphraseInput(BaseEditBox):
-
+class SeedphraseInput(BaseEditBox):
     def __init__(self, driver):
-        super(PassphraseInput, self).__init__(driver)
+        super(SeedphraseInput, self).__init__(driver)
         self.locator = self.Locator.xpath_selector("//android.widget.EditText")
 
 
 class EnterSeedPhraseButton(BaseButton):
-
     def __init__(self, driver):
         super(EnterSeedPhraseButton, self).__init__(driver)
         self.locator = self.Locator.accessibility_id("enter-seed-phrase-button")
 
 
 class ReencryptYourKeyButton(BaseButton):
-
     def __init__(self, driver):
         super(ReencryptYourKeyButton, self).__init__(driver)
-        self.locator = self.Locator.xpath_selector("//android.widget.TextView[@text='Re-encrypt your key']")
+        self.locator = self.Locator.xpath_selector("//android.widget.TextView[@text='Re-encrypt your keys']")
 
 
 class ConfirmRecoverAccess(BaseButton):
-
     def __init__(self, driver):
         super(ConfirmRecoverAccess, self).__init__(driver)
         self.locator = self.Locator.xpath_selector("//android.widget.TextView[@text='RECOVER ACCESS']")
 
-class ContinueCustomSeedPhraseButton(BaseButton):
 
+class ContinueCustomSeedPhraseButton(BaseButton):
     def __init__(self, driver):
         super(ContinueCustomSeedPhraseButton, self).__init__(driver)
         self.locator = self.Locator.accessibility_id("continue-custom-seed-phrase")
 
-class CancelCustomSeedPhraseButton(BaseButton):
 
+class CancelCustomSeedPhraseButton(BaseButton):
     def __init__(self, driver):
         super(CancelCustomSeedPhraseButton, self).__init__(driver)
         self.locator = self.Locator.accessibility_id("cancel-custom-seed-phrase")
@@ -94,10 +90,10 @@ class CancelPhraseButton(BaseButton):
 class RecoverAccessView(SignInView):
 
     def __init__(self, driver):
-        super(RecoverAccessView, self).__init__(driver)
+        super(RecoverAccessView, self).__init__(driver, skip_popups=False)
         self.driver = driver
 
-        self.passphrase_input = PassphraseInput(self.driver)
+        self.seedphrase_input = SeedphraseInput(self.driver)
         self.enter_seed_phrase_button = EnterSeedPhraseButton(self.driver)
         self.confirm_recover_access = ConfirmRecoverAccess(self.driver)
         self.reencrypt_your_key_button = ReencryptYourKeyButton(self.driver)

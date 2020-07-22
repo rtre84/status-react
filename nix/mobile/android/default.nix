@@ -1,50 +1,49 @@
-{ config, stdenv, stdenvNoCC, target-os ? "android", callPackage, mkShell,
-  mkFilter, androidenv, fetchurl, flock, openjdk, nodejs, bash, maven, zlib,
-  status-go, localMavenRepoBuilder, projectNodePackage, jsbundle }:
+{ lib, pkgs, deps, callPackage, mkShell
+, status-go, androidPkgs, androidShell }:
 
 let
-  platform = callPackage ../../platform.nix { inherit target-os; };
+  # For generating a temporary keystore for local development
+  keystore = callPackage ./keystore.nix { };
 
-  androidEnv = callPackage ./android-env.nix { inherit target-os openjdk; };
-  gradle = callPackage ./gradle.nix { };
+  # Import a jsbundle compiled out of clojure codebase
+  jsbundle = callPackage ./jsbundle { };
 
   # Import a patched version of watchman (important for sandboxed builds on macOS)
   watchmanFactory = callPackage ./watchman.nix { };
 
-  # Import a local patched version of node_modules, together with a local version of the Maven repo
-  mavenAndNpmDeps = callPackage ./maven-and-npm-deps { inherit stdenv stdenvNoCC gradle bash nodejs zlib localMavenRepoBuilder mkFilter projectNodePackage; };
-
   # TARGETS
-  release = callPackage ./targets/release-android.nix { inherit target-os gradle mavenAndNpmDeps mkFilter nodejs jsbundle status-go zlib watchmanFactory; androidEnvShellHook = androidEnv.shellHook; };
-  generate-maven-and-npm-deps-shell = callPackage ./maven-and-npm-deps/maven/shell.nix { inherit mkShell gradle maven nodejs projectNodePackage status-go; androidEnvShellHook = androidEnv.shellHook; };
-  adb-shell = mkShell {
-    buildInputs = [ androidEnv.licensedAndroidEnv ];
-    inherit (androidEnv) shellHook;
+  release = callPackage ./release.nix {
+    inherit keystore jsbundle status-go watchmanFactory;
   };
 
 in {
-  inherit (androidEnv) androidComposition;
-
-  buildInputs = assert platform.targetAndroid; [
-    mavenAndNpmDeps.deriv
-    flock # used in reset-node_modules.sh
-    openjdk
-    gradle
-  ];
-  shellHook =
-    let
-      inherit (stdenv.lib) catAttrs concatStrings;
-    in ''
-    ${concatStrings (catAttrs "shellHook" [ mavenAndNpmDeps androidEnv ])}
-    
-    $STATUS_REACT_HOME/scripts/generate-keystore.sh
-
-    $STATUS_REACT_HOME/nix/mobile/reset-node_modules.sh "${mavenAndNpmDeps.deriv}/project" || exit
-  '';
-
   # TARGETS
-  inherit release generate-maven-and-npm-deps-shell;
-  adb = {
-    shell = adb-shell;
+  inherit keystore release jsbundle;
+
+  shell = mkShell {
+    buildInputs = with pkgs; [
+      openjdk
+      gradle
+      lsof  # used in start-react-native.sh
+      flock # used in nix/scripts/node_modules.sh
+    ];
+
+    inputsFrom = [
+      release
+      androidShell
+    ];
+
+    shellHook = ''
+      export ANDROID_SDK_ROOT="${androidPkgs}"
+      export ANDROID_NDK_ROOT="${androidPkgs}/ndk-bundle"
+
+      export STATUS_NIX_MAVEN_REPO="${deps.gradle}"
+
+      # required by some makefile targets
+      export STATUS_GO_ANDROID_LIBDIR=${status-go}
+
+      # check if node modules changed and if so install them
+      $STATUS_REACT_HOME/nix/scripts/node_modules.sh ${deps.nodejs-patched}
+    '';
   };
 }

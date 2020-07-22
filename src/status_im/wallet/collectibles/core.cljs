@@ -1,7 +1,6 @@
 (ns status-im.wallet.collectibles.core
   (:require [re-frame.core :as re-frame]
             [status-im.browser.core :as browser]
-            [status-im.constants :as constants]
             [status-im.ethereum.core :as ethereum]
             [status-im.ethereum.erc721 :as erc721]
             [status-im.ethereum.tokens :as tokens]
@@ -19,8 +18,8 @@
 
 (defmulti load-collectibles-fx (fn [_ symbol _ _ _] symbol))
 
-(defmethod load-collectibles-fx :default [all-tokens symbol items-number address chain]
-  {:load-collectibles-fx [all-tokens symbol items-number address chain]})
+(defmethod load-collectibles-fx :default [all-tokens symbol items-number address]
+  {:load-collectibles-fx [all-tokens symbol items-number address]})
 
 (defn load-token [i items-number contract address symbol]
   (when (< i items-number)
@@ -31,20 +30,18 @@
 
 (re-frame/reg-fx
  :load-collectibles-fx
- (fn [[all-tokens symbol items-number address chain]]
-   (let [contract (:address (tokens/symbol->token all-tokens chain symbol))]
+ (fn [[all-tokens symbol items-number address]]
+   (let [contract (:address (tokens/symbol->token all-tokens symbol))]
      (load-token 0 items-number contract address symbol))))
 
 (handlers/register-handler-fx
  :show-collectibles-list
  (fn [{:keys [db]} [_ {:keys [symbol amount] :as collectible} address]]
-   (let [chain               (ethereum/chain-id->chain-keyword
-                              (get-in constants/default-networks [(:networks/current-network db) :config :NetworkId]))
-         all-tokens          (:wallet/all-tokens db)
+   (let [all-tokens          (:wallet/all-tokens db)
          items-number        (money/to-number amount)
          loaded-items-number (count (get-in db [:collectibles symbol]))]
      (merge (when (not= items-number loaded-items-number)
-              (load-collectibles-fx all-tokens symbol items-number address chain))
+              (load-collectibles-fx all-tokens symbol items-number address))
             {:dispatch [:navigate-to :collectibles-list collectible]}))))
 
 ;; Crypto Kitties
@@ -53,7 +50,7 @@
 (handlers/register-handler-fx
  :load-kitties
  (fn [{db :db} [_ ids]]
-   {:db db
+   {:db (update-in db [:collectibles] merge {ck (sorted-map-by >)})
     :http-get-n (mapv (fn [id]
                         {:url (str "https://api.cryptokitties.co/kitties/" id)
                          :success-event-creator (fn [o]
@@ -62,18 +59,19 @@
                                                   [:load-collectible-failure ck {id (http/parse-payload o)}])})
                       ids)}))
 
-;; TODO(andrey) Each HTTP call will return up to 100 kitties. Maybe we need to implement some kind of paging later
 (defmethod load-collectibles-fx ck [_ _ items-number address _]
-  {:http-get {:url                   (str "https://api.cryptokitties.co/kitties?offset=0&limit="
-                                          items-number
-                                          "&owner_wallet_address="
-                                          address
-                                          "&parents=false")
-              :success-event-creator (fn [o]
-                                       [:load-kitties (map :id (:kitties (http/parse-payload o)))])
-              :failure-event-creator (fn [o]
-                                       [:load-collectibles-failure (http/parse-payload o)])
-              :timeout-ms            10000}})
+  {:http-get-n (mapv (fn [offset]
+                       {:url (str "https://api.cryptokitties.co/kitties?limit=20&offset="
+                                  offset
+                                  "&owner_wallet_address="
+                                  address
+                                  "&parents=false")
+                        :success-event-creator (fn [o]
+                                                 [:load-kitties (map :id (:kitties (http/parse-payload o)))])
+                        :failure-event-creator (fn [o]
+                                                 [:load-collectibles-failure (http/parse-payload o)])
+                        :timeout-ms            10000})
+                     (range 0 items-number 20))}) ;; Cryptokitties API limited to 20 items per request
 
 ;; Crypto Strikers
 (def strikers :STRK)
@@ -99,21 +97,18 @@
 (def kudos :KDO)
 
 (defmethod load-collectible-fx kudos [{db :db} symbol id]
-  (let [chain-id   (get-in constants/default-networks [(:network db) :config :NetworkId])
-        all-tokens (:wallet/all-tokens db)]
-    {:erc721-token-uri [all-tokens symbol id chain-id]}))
+  {:erc721-token-uri [(:wallet/all-tokens db) symbol id]})
 
 (re-frame/reg-fx
  :erc721-token-uri
- (fn [[all-tokens symbol tokenId chain-id]]
-   (let [chain (ethereum/chain-id->chain-keyword chain-id)
-         contract (:address (tokens/symbol->token all-tokens chain symbol))]
+ (fn [[all-tokens symbol tokenId]]
+   (let [contract (:address (tokens/symbol->token all-tokens symbol))]
      (erc721/token-uri contract
                        tokenId
                        #(re-frame/dispatch [:token-uri-success
                                             tokenId
                                             (when %
-                                              (subs % (.indexOf % "http")))]))))) ;; extra chars in rinkeby
+                                              (subs % (.indexOf ^js % "http")))]))))) ;; extra chars in rinkeby
 
 ;;Superrare
 (def superrare :SUPR)

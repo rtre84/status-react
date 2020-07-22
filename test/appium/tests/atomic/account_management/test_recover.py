@@ -3,7 +3,7 @@ import pytest
 from support.utilities import fill_string_with_char
 from tests import marks, unique_password
 from tests.base_test_case import SingleDeviceTestCase
-from tests.users import basic_user, transaction_senders, recovery_users
+from tests.users import basic_user, transaction_senders, recovery_users, ens_user
 from views.sign_in_view import SignInView
 from views.recover_access_view import RecoverAccessView
 
@@ -25,26 +25,7 @@ class TestRecoverAccountSingleDevice(SingleDeviceTestCase):
         profile_view.backup_recovery_phrase_button.click()
         if not profile_view.backup_recovery_phrase_button.is_element_displayed():
             self.errors.append('Back up seed phrase option is active for recovered account!')
-        self.verify_no_errors()
-
-    @marks.skip
-    @marks.testrail_id(845)
-    # test doesn't exist in TestRail
-    # obsolate
-    def test_recover_account_with_incorrect_passphrase(self):
-        sign_in = SignInView(self.driver)
-        sign_in.create_user()
-        public_key = sign_in.get_public_key()
-        profile = sign_in.get_profile_view()
-        profile.backup_recovery_phrase_button.click()
-        profile.ok_continue_button.click()
-        recovery_phrase = profile.get_recovery_phrase()
-
-        self.driver.reset()
-        sign_in.accept_agreements()
-        sign_in.recover_access(passphrase=' '.join(list(recovery_phrase.values())[::-1]))
-        if sign_in.get_public_key() == public_key:
-            self.driver.fail('The same account is recovered with reversed passphrase')
+        self.errors.verify_no_errors()
 
     @marks.logcat
     @marks.testrail_id(5366)
@@ -58,10 +39,12 @@ class TestRecoverAccountSingleDevice(SingleDeviceTestCase):
 
 
 class TestRecoverAccessFromSignInScreen(SingleDeviceTestCase):
+
     @marks.testrail_id(5363)
     @marks.high
     def test_pass_phrase_validation(self):
         signin_view = SignInView(self.driver)
+        signin_view.get_started_button.click_until_presence_of_element(signin_view.access_key_button)
         signin_view.access_key_button.click()
         recover_access_view = RecoverAccessView(self.driver)
         validations = [
@@ -81,9 +64,9 @@ class TestRecoverAccessFromSignInScreen(SingleDeviceTestCase):
                 'words count': 1,
                 'popup' : False
             },
-            # outside mnemonic
+            # mnemonic but checksum validation fails
             {
-                'phrase': '; two three four five six seven eight nine ten eleven twelve',
+                'phrase': 'one two three four five six seven eight nine ten eleven twelve',
                 'element to check': recover_access_view.warnings.invalid_recovery_phrase,
                 'validation message': '',
                 'words count': 12,
@@ -91,12 +74,13 @@ class TestRecoverAccessFromSignInScreen(SingleDeviceTestCase):
             },
         ]
 
-        # check that seed phrase is required (can't be empty)
+        recover_access_view.just_fyi("check that seed phrase is required (can't be empty)")
         recover_access_view.enter_seed_phrase_button.click()
         recover_access_view.next_button.click()
         if recover_access_view.reencrypt_your_key_button.is_element_displayed():
             self.errors.append("Possible to create account with empty seed phrase")
 
+        signin_view = SignInView(self.driver, skip_popups=False)
         # we're performing the same steps changing only phrase per attempt
         for validation in validations:
             phrase, elm, msg, words_count, popup = validation.get('phrase'), \
@@ -111,11 +95,11 @@ class TestRecoverAccessFromSignInScreen(SingleDeviceTestCase):
 
             recover_access_view.send_as_keyevent(phrase)
 
-            # TODO: uncomment after 8567 fix
-            #if msg and not elm.is_element_displayed():
+            # TODO: still disabled because tooltips are not visible
+            # if msg and not elm.is_element_displayed():
             #     self.errors.append('"{}" message is not shown'.format(msg))
 
-            # check that words count is shown
+            recover_access_view.just_fyi('check that words count is shown')
             if words_count == 1:
                 if not signin_view.element_by_text('%s word' % words_count):
                     self.errors.append('"%s word" is not shown ' % words_count)
@@ -123,31 +107,22 @@ class TestRecoverAccessFromSignInScreen(SingleDeviceTestCase):
                 if not signin_view.element_by_text('%s words' % words_count):
                     self.errors.append('"%s words" is not shown ' % words_count)
 
-            # check that "Next" is disabled unless we use allowed count of words
+            recover_access_view.just_fyi('check that "Next" is disabled unless we use allowed count of words')
             if words_count != 12 or 15 or 18 or 21 or 24:
                 recover_access_view.next_button.click()
                 if recover_access_view.reencrypt_your_key_button.is_element_displayed():
                     self.errors.append("Possible to create account with wrong count (%s) of words" % words_count)
 
-            # check behavior for popup "Custom seed phrase"
+            recover_access_view.just_fyi('check behavior for popup "Custom seed phrase"')
             if popup:
-                text = 'Custom seed phrase'
-                common_password = 'qwerty'
+                text = 'Invalid seed phrase'
                 if not recover_access_view.find_full_text(text):
                     self.errors.append('"%s" text is not shown' % text)
                 recover_access_view.cancel_custom_seed_phrase_button.click()
-                recover_access_view.next_button.click()
-                recover_access_view.continue_custom_seed_phrase_button.click()
-                recover_access_view.reencrypt_your_key_button.click()
-                recover_access_view.next_button.click()
-                recover_access_view.create_password_input.set_value(common_password)
-                recover_access_view.next_button.click()
-                recover_access_view.confirm_your_password_input.set_value(common_password)
-                recover_access_view.next_button.click_until_presence_of_element(recover_access_view.home_button)
-            else:
-                recover_access_view.click_system_back_button()
 
-        self.verify_no_errors()
+            recover_access_view.click_system_back_button()
+
+        self.errors.verify_no_errors()
 
     @marks.testrail_id(5499)
     @marks.medium
@@ -170,7 +145,7 @@ class TestRecoverAccessFromSignInScreen(SingleDeviceTestCase):
         signin_view.recover_access(capitalized_passphrase)
         profile_view = signin_view.profile_button.click()
         username = profile_view.default_username_text.text
-        public_key = signin_view.get_public_key()
+        public_key = signin_view.get_public_key_and_username()
         if username != user['username'] or public_key != user['public_key']:
             self.driver.fail('Incorrect user was recovered')
 
@@ -178,7 +153,7 @@ class TestRecoverAccessFromSignInScreen(SingleDeviceTestCase):
     @marks.medium
     def test_special_characters_in_password_when_recover_account(self):
         sign_in = SignInView(self.driver)
-        sign_in.recover_access(passphrase=basic_user['passphrase'], password=basic_user['special_chars_password'])
+        sign_in.recover_access(passphrase=ens_user['passphrase'], password=basic_user['special_chars_password'])
         sign_in.relogin(password=basic_user['special_chars_password'])
 
     @marks.testrail_id(5455)
@@ -194,4 +169,4 @@ class TestRecoverAccessFromSignInScreen(SingleDeviceTestCase):
                 self.errors.append('Restored wallet address "%s" does not match expected "%s"' % (address, account))
             profile_view = home_view.profile_button.click()
             profile_view.logout()
-        self.verify_no_errors()
+        self.errors.verify_no_errors()

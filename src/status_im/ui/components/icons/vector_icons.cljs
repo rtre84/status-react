@@ -1,8 +1,7 @@
 (ns status-im.ui.components.icons.vector-icons
   (:require [status-im.ui.components.react :as react]
             [status-im.ui.components.colors :as colors]
-            [status-im.utils.platform :as platform]
-            [clojure.string :as string])
+            [status-im.ui.components.icons.icons :as icons])
   (:refer-clojure :exclude [use]))
 
 (defn- match-color [color]
@@ -15,6 +14,7 @@
       :active colors/blue
       :white colors/white
       :red colors/red
+      :none nil
       colors/black)
     (string? color)
     color
@@ -22,9 +22,7 @@
     colors/black))
 
 (defn icon-source [name]
-  (if platform/desktop?
-    {:uri (keyword (string/replace (clojure.core/name name) "-" "_"))}
-    {:uri (keyword (clojure.core/name name))}))
+  (icons/icon-source name))
 
 (defn icon
   ([name] (icon name nil))
@@ -44,7 +42,7 @@
                             resize-mode
                             (assoc :resize-mode resize-mode)
 
-                            color
+                            :always
                             (assoc :tint-color (match-color color)))
                   :source (icon-source name)}]]))
 

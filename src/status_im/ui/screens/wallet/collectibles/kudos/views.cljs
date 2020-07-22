@@ -4,7 +4,8 @@
             [status-im.ui.screens.wallet.collectibles.styles :as styles]
             [status-im.ui.components.svgimage :as svgimage]
             [re-frame.core :as re-frame]
-            [status-im.ui.components.list-item.views :as list-item]))
+            [status-im.i18n :as i18n]
+            [quo.core :as quo]))
 
 (defmethod collectibles/render-collectible :KDO [_ {:keys [external_url description name image]}]
   [react/view {:style styles/details}
@@ -17,9 +18,9 @@
       name]
      [react/text
       description]]]
-   [list-item/list-item
-    {:theme               :action
-     :title               :t/view-gitcoin
+   [quo/list-item
+    {:theme :accent
+     :title               (i18n/label :t/view-gitcoin)
      :icon                :main-icons/address
      :accessibility-label :open-collectible-button
      :on-press            #(re-frame/dispatch [:open-collectible-in-browser external_url])}]])

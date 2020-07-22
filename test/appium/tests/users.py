@@ -7,16 +7,25 @@ basic_user['address'] = "f184747445c3B85CEb147DfB136067CB93d95F1D"
 basic_user['special_chars_password'] = " !\"#$Á%Ö&'()*+Í, -./:ä;<=>?@[\\]^_`{|}~ "
 
 ens_user = dict()
-ens_user['passphrase'] = "husband rough hotel obey annual you member reopen struggle air evoke taxi"
-ens_user['username'] = "Outstanding Actual Eyas"
-ens_user['public_key'] = "0x04318d20a2ca5fd0022579005ed24802e07d4ec610bede808dd13d3318af439e16d55be1a59af007a11120b" \
-                         "d1c205861e5f53fe7b000a25e2b0d4eee7f0c5ebf7e"
-ens_user['ens'] = 'autotester'
-ens_user['address'] = '0x31419baa0242dFd2BB485b3e41A78210A1c2332A'
+ens_user['passphrase'] = "fashion quality know robust copy neck stand embody entry task orient suggest"
+ens_user['username'] = "Legal Vibrant Indianabat"
+ens_user['public_key'] = "0x04359bb3e73cba0b815d71e562670ad00bb5d2db0d16cd1c4c92c668b61fde2274d6e487fcdffe66f913b3fea2a" \
+                         "3058f53ce7946c2b501aa61a9ca8a883df72dc9"
+ens_user['ens'] = 'statuse2e'
+ens_user['ens_another_domain'] = 'statuse2e.eth'
+ens_user['address'] = '0x1eE3058Bd300246B4B20E687Efc9Eba81FF7814b'
 
-ens_user_other_domain = dict()
-ens_user_other_domain['ens'] = 'tanyatest1.eth'
-ens_user_other_domain['address'] = '0xcf2272205cc0cf96Cfbb9Dd740BD681D1E86901E'
+ens_user_ropsten = dict()
+ens_user_ropsten['ens'] = 'nastya'
+ens_user_ropsten['username'] = 'Thoughtful Stupendous Graywolf'
+
+dummy_user = dict()
+dummy_user['username'] = "Vain Wordy Hagfish"
+dummy_user['passphrase'] = "near broom kiss excess sad switch slab melt trade crash spare dinner"
+dummy_user['public_key'] = "0x04596348471aa19d31c8503fa00f95abd0fc3ca908668817284b52b7ced95f966cc13457254aa908aa8e64" \
+                           "a2748453accf9d358b8d7a1448597201c664dc280e37"
+dummy_user['address'] = "0xdF6Bc71206d7ea89ec905a7f5ce8Ff34C85eB04e"
+
 
 wallet_users = dict()
 
@@ -28,18 +37,20 @@ wallet_users['A']['public_key'] = "0x04fa759cc29261fd7779cf8b3566de61e3fb22aca46
                                   "9a957fdab86e277e4bb7ec90f7998d21fc16690397d3783b8d8711e1"
 
 wallet_users['B'] = dict()
-wallet_users['B']['passphrase'] = "subway size dial screen stomach route skin kitchen radar true coffee six"
-wallet_users['B']['username'] = "Idealistic Assured Spidermonkey"
-wallet_users['B']['address'] = "85b159bad0d500483b307ec6892c7fa3be591cbc"
-wallet_users['B']['public_key'] = "0x04c068a1467abf8d18ea4a020e52880d855c5a418e52c1ef29cc9b30999ed986cf5c9fe55" \
-                                  "d6ffd10659be32c8c1ce15dbf7dc0659e238a0169eb7e18be9757baa8"
+wallet_users['B']['passphrase'] = "unknown endless ill average shell foil kitchen runway left race neither exhaust"
+wallet_users['B']['username'] = "Bulky Able Firecrest"
+wallet_users['B']['address'] = "0F3EFF5CacEe63045be97281316457fb78dd659E"
+wallet_users['B']['public_key'] = "0x04f3c372522a087bd6895a67b669601e6b6825b2ee7add5942d10efd1c3c836a1d9a677d94d33" \
+                                  "895833b6ebe523f0fe5965f73558da58520a3f9c7a00e73f75d61"
+
 
 wallet_users['C'] = dict()
 wallet_users['C']['passphrase'] = "purchase ensure mistake crystal person similar shaft family shield clog risk market"
 wallet_users['C']['username'] = "Mellow Virtual Nubiangoat"
-wallet_users['C']['address'] = "8dce052ccda2f6f6b555759cee6957e04a6ddf5b"
+wallet_users['C']['address'] = "8DcE052cCda2F6F6B555759cEe6957e04A6dDf5B"
 wallet_users['C']['public_key'] = "0x040e562b69362e7e57492bca50b6095acfa636c48b85eef2bc0e4180b6e99fc5e73f45c3" \
                                   "40837da01728d4585695fda7f1de2ed193a1dd4080291d90812e1cae77"
+wallet_users['C']['private_key'] = '7800C28310576645BBF6BF6355F7AA4CEC659B1713AF7E7713E1A33097A3DDF6'
 
 wallet_users['D'] = dict()
 wallet_users['D']['passphrase'] = "hen mango since lottery laundry flag report whisper cycle rate festival carry"
@@ -112,8 +123,7 @@ transaction_senders['D']['public_key'] = "0x044764a9ba22bb4ae355619ca3824ee66b9f
                                          "d0dd570471986c229c077c8053ee47784416eb6604d52e41f8f9d566ef8"
 
 transaction_senders['E'] = dict()
-transaction_senders['E']['passphrase'] = \
-    "sea ill guard bounce gesture tomato walnut fitness plastic affair oven transfer"
+transaction_senders['E']['passphrase'] = "sea ill guard bounce gesture tomato walnut fitness plastic affair oven transfer"
 transaction_senders['E']['username'] = "Fatal Metallic Imperialeagle"
 transaction_senders['E']['address'] = "f7cb60839c0de25e37be0391c33bb34a8f0f8414"
 transaction_senders['E']['public_key'] = "0x04db6128352e5c2d05ee5a6556848453cf3a7af34e94b3e20a302de684e9906461e38adf" \
@@ -146,14 +156,6 @@ transaction_senders['I']['username'] = "Finished Infatuated Whiteeye"
 transaction_senders['I']['address'] = "0887afe0ee3e1b195f596350bb04bba034514af9"
 transaction_senders['I']['public_key'] = "0x04e61e616f881383e807cd1fb714fa2e06b5ad1cb6cd7b97a9265da2ad9a133ee750954a" \
                                          "6c4da3635f2e406b310f6e294ca94ea3a686287a1276e4e86612886f8e"
-
-transaction_senders['J'] = dict()
-transaction_senders['J']['passphrase'] = "shrug during breeze mercy install net reopen uniform atom guilt sadness elite"
-transaction_senders['J']['username'] = "Outrageous Knotty Shearwater"
-transaction_senders['J']['address'] = "ad0f319ca0cfa051f625ad1a3fc6bf0cbad45b24"
-transaction_senders['J']['public_key'] = "0x04fedbb6114918babbdabdc7bd5cb5f3aaa13f4bd5df5c27c2b2adfc91dffae15f75bf9f" \
-                                         "0e9bb747ef1996b63260f40dee1e00f62b061d95c6878b8c5ecfb33835"
-
 transaction_senders['K'] = dict()
 transaction_senders['K']['passphrase'] = "fly west avoid depend tape direct foster off cry crucial blame elegant"
 transaction_senders['K']['username'] = "Decimal Healthy Harpyeagle"

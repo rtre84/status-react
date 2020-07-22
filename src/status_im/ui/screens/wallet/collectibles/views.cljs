@@ -4,10 +4,9 @@
             [status-im.ui.components.colors :as colors]
             [status-im.ui.components.list.views :as list]
             [status-im.ui.components.react :as react]
-            [status-im.ui.components.status-bar.view :as status-bar]
             [status-im.ui.components.styles :as component.styles]
-            [status-im.ui.components.toolbar.view :as toolbar]
-            [status-im.ui.screens.wallet.collectibles.styles :as styles]))
+            [status-im.ui.screens.wallet.collectibles.styles :as styles]
+            [status-im.ui.components.topbar :as topbar]))
 
 (defmulti render-collectible (fn [symbol _] symbol))
 
@@ -18,22 +17,18 @@
 (defview collectibles-list []
   (letsubs [{:keys [name symbol]} [:get-screen-params]
             collectibles [:screen-collectibles]]
-    [react/view styles/container
-     [react/view {:style component.styles/flex}
-      [status-bar/status-bar]
-      [toolbar/toolbar {}
-       toolbar/default-nav-back
-       [toolbar/content-title name]]
-      (cond
-        (nil? collectibles)
-        [react/view {:style styles/loading-indicator}
-         [react/activity-indicator {:animating true :size :large :color colors/blue}]]
-        (seq collectibles)
-        [list/flat-list {:data      collectibles
-                         :key-fn    (comp str :id)
-                         :render-fn #(render-collectible symbol %)}]
-        :else
-        ;; Should never happen. Less confusing to debug new NFT support.
-        [react/view {:style styles/loading-indicator}
-         [react/text (i18n/label :t/error)]])]]))
+    [react/view {:style component.styles/flex}
+     [topbar/topbar {:title name}]
+     (cond
+       (nil? collectibles)
+       [react/view {:style styles/loading-indicator}
+        [react/activity-indicator {:animating true :size :large :color colors/blue}]]
+       (seq collectibles)
+       [list/flat-list {:data      collectibles
+                        :key-fn    (comp str :id)
+                        :render-fn #(render-collectible symbol %)}]
+       :else
+       ;; Should never happen. Less confusing to debug new NFT support.
+       [react/view {:style styles/loading-indicator}
+        [react/text (i18n/label :t/error)]])]))
 

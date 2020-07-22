@@ -4,30 +4,22 @@
             [status-im.i18n :as i18n]
             [reagent.core :as reagent]
             [clojure.string :as string]
-            [status-im.ui.components.tabbar.styles :as main-tabs.styles]
             [status-im.ui.components.colors :as colors]
             [status-im.ui.components.icons.vector-icons :as icons]
             [status-im.utils.platform :as utils.platform]
             [status-im.ui.components.styles :as components.styles]
-            [status-im.ui.components.common.common :as components.common]
             [status-im.ui.components.checkbox.view :as checkbox.views]
             [status-im.ui.components.list.views :as list]
             [status-im.ui.components.react :as react]
-            [status-im.ui.components.status-bar.view :as status-bar]
-            [status-im.ui.components.toolbar.view :as toolbar]
-            [status-im.ui.components.text-input.view :as text-input]
-            [status-im.ui.screens.pairing.styles :as styles]))
+            [quo.core :as quo]
+            [status-im.ui.screens.pairing.styles :as styles]
+            [status-im.ui.components.topbar :as topbar]))
 
 (def syncing (reagent/atom false))
 (def installation-name (reagent/atom ""))
 
-(defn icon-style [{:keys [width height] :as style}]
-  (if utils.platform/desktop?
-    {:container-style {:width width
-
-                       :height height}
-     :style  style}
-    style))
+(defn icon-style [style]
+  style)
 
 (defn synchronize-installations! []
   (reset! syncing true)
@@ -53,7 +45,7 @@
 (defn footer [syncing]
   [react/touchable-highlight {:on-press (when-not @syncing
                                           synchronize-installations!)
-                              :style main-tabs.styles/tabs-container}
+                              :style    {:height         52}}
    [react/view
     {:style styles/footer-content}
     [react/text
@@ -76,28 +68,13 @@
      [react/view
       [react/text (i18n/label :t/pair-this-device-description)]]]]])
 
-(defn sync-devices []
-  [react/touchable-highlight {:on-press synchronize-installations!
-                              :style styles/pair-this-device}
-   [react/view {:style styles/pair-this-device-actions}
-    [react/view
-     [react/view (styles/pairing-button true)
-      [icons/icon :main-icons/wnode (icon-style (styles/pairing-button-icon true))]]]
-    [react/view {:style styles/pairing-actions-text}
-     [react/view
-      [react/text {:style styles/pair-this-device-title}
-       (if @syncing
-         (i18n/label :t/syncing-devices)
-         (i18n/label :t/sync-all-devices))]]]]])
-
 (defn your-device [{:keys [installation-id name device-type]}]
   [react/view {:style styles/installation-item}
    [react/view {:style (styles/pairing-button true)}
-    [icons/icon  (if (= "desktop"
-                        device-type)
-                   :main-icons/desktop
-                   :main-icons/mobile)
-
+    [icons/icon (if (= "desktop"
+                       device-type)
+                  :main-icons/desktop
+                  :main-icons/mobile)
      (icon-style (styles/pairing-button-icon true))]]
    [react/view {:style styles/pairing-actions-text}
     [react/view
@@ -110,8 +87,8 @@
                   ")")]]]])
 
 (defn render-row [{:keys [name
-                          device-type
                           enabled?
+                          device-type
                           installation-id]}]
   [react/touchable-highlight
    {:accessibility-label :installation-item}
@@ -154,28 +131,27 @@
   [react/keyboard-avoiding-view styles/edit-installation
    [react/scroll-view {:keyboard-should-persist-taps :handled}
     [react/view
-     [react/text (i18n/label :t/pairing-please-set-a-name)]]
-    [text-input/text-input-with-label
-     {:placeholder     (i18n/label :t/specify-name)
-      :style               styles/input
-      :accessibility-label :device-name
-      :container           styles/input-container
-      :default-value       @installation-name
-      :on-change-text      #(reset! installation-name %)
-      :auto-focus          true}]]
+     [quo/text-input
+      {:placeholder         (i18n/label :t/specify-name)
+       :label               (i18n/label :t/pairing-please-set-a-name)
+       :accessibility-label :device-name
+       :default-value       @installation-name
+       :on-change-text      #(reset! installation-name %)
+       :auto-focus          true}]]]
    [react/view styles/bottom-container
     [react/view components.styles/flex]
-    [components.common/bottom-button
-     {:forward?  true
-      :label     (i18n/label :t/continue)
-      :disabled? (string/blank? @installation-name)
+    [quo/button
+     {:type      :secondary
+      :after     :main-icon/next
+      :disabled  (string/blank? @installation-name)
       :on-press  #(do
                     (re-frame/dispatch [:pairing.ui/set-name-pressed @installation-name])
-                    (reset! installation-name ""))}]]])
+                    (reset! installation-name ""))}
+     (i18n/label :t/continue)]]])
 
 (defn info-section []
   [react/view {:style styles/info-section}
-   [react/touchable-highlight {:on-press #(.openURL react/linking "https://status.im/tutorials/pairing.html")}
+   [react/touchable-highlight {:on-press #(.openURL ^js react/linking "https://status.im/tutorials/pairing.html")}
     [react/text {:style styles/info-section-text} (i18n/label :t/learn-more)]]])
 
 (defn installations-list [installations]
@@ -187,11 +163,8 @@
 (views/defview installations []
   (views/letsubs [installations [:pairing/installations]]
     [react/view {:flex 1}
-     [status-bar/status-bar]
-     [toolbar/toolbar {}
-      toolbar/default-nav-back
-      [toolbar/content-title (i18n/label :t/devices)]]
-     [react/scroll-view {:style {:background-color :white}}
+     [topbar/topbar {:title :t/devices}]
+     [react/scroll-view
       (if (string/blank? (-> installations first :name))
         [edit-installation-name]
         [react/view

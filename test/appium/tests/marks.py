@@ -1,6 +1,5 @@
 import pytest
 
-pr = pytest.mark.pr
 testrail_case_id = pytest.mark.testrail_case_id
 testrail_id = pytest.mark.testrail_id  # atomic tests
 critical = pytest.mark.critical
@@ -10,6 +9,7 @@ low = pytest.mark.low
 
 account = pytest.mark.account
 upgrade = pytest.mark.upgrade
+flaky = pytest.mark.flaky
 api = pytest.mark.api
 all = pytest.mark.all
 chat = pytest.mark.chat

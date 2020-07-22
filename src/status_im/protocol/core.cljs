@@ -21,7 +21,7 @@
   [db mailserver-topics]
   (assoc db
          :mailserver/topics
-         (reduce (fn [acc {:keys [topic chat-ids]
+         (reduce (fn [acc {:keys [topic]
                            :as mailserver-topic}]
                    (assoc acc topic
                           (update mailserver-topic :chat-ids
@@ -68,4 +68,4 @@
                      (not initialization-complete?)
                      (assoc :initialization-protocol initialization-protocol))}
               (when initialization-complete?
-                (transport/init-whisper)))))
+                (transport/init-messenger)))))

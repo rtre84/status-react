@@ -1,25 +1,10 @@
 (ns status-im.ui.screens.browser.styles
-  (:require [status-im.ui.components.colors :as colors]
-            [status-im.utils.styles :as styles]))
+  (:require [status-im.ui.components.colors :as colors]))
 
 (def browser {:flex 1})
 
-(styles/def dapp-name
-  {:flex            1
-   :justify-content :center
-   :margin-left     12
-   :android         {:padding-bottom 6}})
-
-(def dapp-name-text
-  {:font-size 16})
-
-(styles/def dapp-text
-  {:color   colors/gray
-   :ios     {:margin-top 4}
-   :android {:font-size 13}})
-
-(def navbar
-  {:background-color   :white
+(defn navbar []
+  {:background-color   colors/white
    :height             51
    :flex-direction     :row
    :align-items        :center
@@ -31,28 +16,23 @@
 (def disabled-button
   {:opacity 0.4})
 
-(def forward-button
-  {:margin-left 72})
-
-(def share-button
-  {:margin-right 72})
-
-(def background
-  {:flex             1
-   :background-color colors/gray-lighter
-   :align-items      :center
-   :justify-content  :center})
-
 (def web-view-error
-  {:flex             1
-   :justify-content  :center
+  {:justify-content  :center
    :align-items      :center
-   :background-color colors/gray-lighter})
+   :position         :absolute
+   :padding          20
+   :top              0
+   :left             0
+   :bottom           0
+   :right            0
+   :background-color colors/white})
 
 (def web-view-error-text
-  {:color colors/gray})
+  {:color       colors/gray
+   :line-height 22
+   :text-align  :center})
 
-(def toolbar-content
+(defn toolbar-content []
   {:flex-direction     :row
    :flex               1
    :border-radius      8
@@ -105,7 +85,7 @@
    :left                    0
    :bottom                  0
    :align-items             :center
-   :background-color        :white
+   :background-color        colors/white
    :border-top-left-radius  8
    :border-top-right-radius 8})
 

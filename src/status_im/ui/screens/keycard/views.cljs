@@ -1,188 +1,24 @@
 (ns status-im.ui.screens.keycard.views
-  (:require-macros [status-im.utils.views :refer [defview letsubs]])
-  (:require [status-im.multiaccounts.core :as multiaccounts]
-            [status-im.ui.components.react :as react]
-            [status-im.ui.components.toolbar.view :as toolbar]
-            [status-im.ui.screens.keycard.styles :as styles]
+  (:require [re-frame.core :as re-frame]
+            [reagent.core :as reagent]
             [status-im.i18n :as i18n]
-            [status-im.ui.components.colors :as colors]
+            [status-im.multiaccounts.core :as multiaccounts]
             [status-im.react-native.resources :as resources]
-            [re-frame.core :as re-frame]
+            [status-im.ui.components.colors :as colors]
             [status-im.ui.components.icons.vector-icons :as vector-icons]
-            [status-im.ui.screens.hardwallet.pin.views :as pin.views]
-            [status-im.utils.core :as utils.core]
-            [status-im.utils.gfycat.core :as gfy]
-            [status-im.utils.identicon :as identicon]
-            [status-im.ui.components.list-item.views :as list-item]
-            [status-im.ui.screens.chat.photos :as photos]))
+            [quo.core :as quo]
+            [status-im.ui.components.toolbar :as toolbar]
+            [status-im.ui.components.react :as react]
+            [status-im.ui.components.topbar :as topbar]
+            [status-im.ui.screens.chat.photos :as photos]
+            [status-im.ui.screens.keycard.pin.views :as pin.views]
+            [status-im.ui.screens.keycard.styles :as styles]
+            [status-im.constants :as constants]
+            [status-im.keycard.login :as keycard.login]
+            [status-im.ui.screens.keycard.frozen-card.view :as frozen-card.view])
+  (:require-macros [status-im.utils.views :refer [defview letsubs]]))
 
-(defview connection-lost []
-  (letsubs [{:keys [card-connected?]} [:keycard]]
-    [react/view {:flex             1
-                 :justify-content  :center
-                 :align-items      :center
-                 :background-color colors/gray-transparent-40}
-     [react/view {:background-color colors/white
-                  :height           478
-                  :width            "85%"
-                  :border-radius    16
-                  :flex-direction   :column
-                  :justify-content  :space-between
-                  :align-items      :center}
-      [react/view {:margin-top 32}
-       [react/text {:style {:typography :title-bold
-                            :text-align :center}}
-        (i18n/label :t/connection-with-the-card-lost)]
-       [react/view {:margin-top 16}
-        [react/text {:style {:color              colors/gray
-                             :padding-horizontal 50
-                             :text-align         :center}}
-         (i18n/label :t/connection-with-the-card-lost-text)]]]
-      [react/view {:margin-top 16}
-       (if card-connected?
-         [react/activity-indicator {:size      :large
-                                    :animating true}]
-         [react/image {:source      (resources/get-image :keycard-connection)
-                       :resize-mode :center
-                       :style       {:width  200
-                                     :height 200}}])]
-      [react/view {:margin-bottom 43}
-       [react/touchable-highlight
-        {:on-press #(re-frame/dispatch [:keycard.connection-lost.ui/cancel-pressed])}
-        [react/text {:style {:color      colors/red
-                             :text-align :center}}
-         (i18n/label :t/cancel)]]]]]))
-
-(defn connection-lost-setup []
-  [react/view {:flex             1
-               :justify-content  :center
-               :align-items      :center
-               :background-color colors/gray-transparent-40}
-   [react/view {:background-color colors/white
-                :height           478
-                :width            "85%"
-                :border-radius    16
-                :flex-direction   :column
-                :justify-content  :space-between
-                :align-items      :center}
-    [react/view {:margin-top 32}
-     [react/text {:style {:typography :title-bold
-                          :text-align :center}}
-      (i18n/label :t/connection-with-the-card-lost)]
-     [react/view {:margin-top 16}
-      [react/text {:style {:color      colors/gray
-                           :text-align :center}}
-       (i18n/label :t/connection-with-the-card-lost-setup-text)]]]
-    [react/view {:margin-top 16}
-     [react/image {:source      (resources/get-image :keycard-connection)
-                   :resize-mode :center
-                   :style       {:width  200
-                                 :height 200}}]]
-    [react/view {:margin-bottom 43}
-     [react/touchable-highlight
-      {:on-press #(re-frame/dispatch [:keycard.onboarding.connection-lost-setup.ui/cancel-setup-pressed])}
-      [react/text {:style {:color      colors/red
-                           :text-align :center}}
-       (i18n/label :t/cancel-keycard-setup)]]]]])
-
-(defn nfc-on []
-  [react/view styles/container
-   [toolbar/toolbar
-    {:transparent? true
-     :style        {:margin-top 32}}
-    toolbar/default-nav-back
-    nil]
-   [react/view {:flex            1
-                :flex-direction  :column
-                :justify-content :space-between
-                :align-items     :center}
-    [react/view {:flex-direction :column
-                 :align-items    :center}
-     [react/view {:margin-top 16}
-      [react/text {:style {:typography :header}}
-       (i18n/label :t/turn-nfc-on)]]]
-    [react/view
-     [react/view {:align-items     :center
-                  :justify-content :center}
-      [react/image {:source (resources/get-image :keycard-nfc-on)
-                    :style  {:width  170
-                             :height 170}}]]]
-    [react/view
-     [react/touchable-highlight
-      {:on-press #(re-frame/dispatch [:keycard.onboarding.nfc-on/open-nfc-settings-pressed])}
-      [react/text {:style {:font-size     15
-                           :line-height   22
-                           :color         colors/blue
-                           :text-align    :center
-                           :margin-bottom 30}}
-       (i18n/label :t/open-nfc-settings)]]]]])
-
-(defn loading [title-label]
-  [react/view styles/container
-   [toolbar/toolbar {:transparent? true
-                     :style        {:margin-top 32}}
-    nil nil]
-   [react/view {:flex            1
-                :flex-direction  :column
-                :justify-content :space-between
-                :align-items     :center}
-    [react/view {:flex-direction :column
-                 :align-items    :center}
-     [react/view {:margin-top 16}
-      [react/activity-indicator {:animating true
-                                 :size      :large}]]
-     [react/view {:margin-top 16}
-      [react/text {:style {:typography :header
-                           :text-align :center}}
-       (i18n/label title-label)]]
-     [react/view {:margin-top 16
-                  :width      311}
-      [react/text {:style {:font-size   15
-                           :line-height 22
-                           :color       colors/gray
-                           :text-align  :center}}
-       (i18n/label :t/this-will-take-few-seconds)]]]
-    [react/view {:flex            1
-                 :align-items     :center
-                 :justify-content :center}
-     [react/image {:source      (resources/get-image :keycard-phone)
-                   :resize-mode :center
-                   :style       {:width  160
-                                 :height 170}}]
-     [react/view {:margin-top 10}
-      [react/text {:style {:text-align  :center
-                           :color       colors/gray
-                           :font-size   15
-                           :line-height 22}}
-       (i18n/label :t/hold-card)]]]]])
-
-(defn pairing []
-  (loading :t/keycard-onboarding-pairing-header))
-
-(defn welcome []
-  [react/view {:flex            1
-               :justify-content :space-between
-               :align-items     :center
-               :flex-direction  :column}
-   [react/view]
-   [react/view {:align-items :center}
-    [react/image {:source      (resources/get-image :status-logo)
-                  :resize-mode :center
-                  :style       {:width  64
-                                :height 64}}]
-    [react/view {:margin-top 24}
-     [react/i18n-text {:style {:typography :header
-                               :text-align :center}
-                       :key   :welcome-to-status}]]
-    [react/view {:margin-top 16}
-     [react/i18n-text {:style {:text-align        :center
-                               :margin-horizontal 39
-                               :color             colors/gray}
-                       :key   :welcome-screen-text}]]]
-   [react/view {:align-items :center :margin-bottom 52}
-    [react/activity-indicator {:size      :large
-                               :animating true}]]])
-
+;; NOTE(Ferossgp): Seems like it should be in popover
 (defn blank []
   [react/view {:flex             1
                :justify-content  :center
@@ -211,18 +47,10 @@
                    :style       {:width  144
                                  :height 114}}]]
     [react/view {:margin-bottom 32}
-     [react/touchable-highlight
-      {:on-press #(re-frame/dispatch [:keycard.login.ui/got-it-pressed])}
-      [react/view {:background-color colors/blue-light
-                   :align-items      :center
-                   :justify-content  :center
-                   :flex-direction   :row
-                   :width            133
-                   :height           44
-                   :border-radius    10}
-       [react/text {:style {:color colors/blue}}
-        (i18n/label :t/ok-got-it)]]]]]])
+     [quo/button {:on-press #(re-frame/dispatch [:navigate-back])}
+      (i18n/label :t/ok-got-it)]]]])
 
+;; NOTE(Ferossgp): Seems like it should be in popover
 (defn wrong []
   [react/view {:flex             1
                :justify-content  :center
@@ -250,17 +78,8 @@
                    :style  {:width  255
                             :height 124}}]]
     [react/view {:margin-bottom 32}
-     [react/touchable-highlight
-      {:on-press #(re-frame/dispatch [:keycard.login.ui/got-it-pressed])}
-      [react/view {:background-color colors/blue-light
-                   :align-items      :center
-                   :justify-content  :center
-                   :flex-direction   :row
-                   :width            133
-                   :height           44
-                   :border-radius    10}
-       [react/text {:style {:color colors/blue}}
-        (i18n/label :t/ok-got-it)]]]]]])
+     [quo/button {:on-press #(re-frame/dispatch [:navigate-back])}
+      (i18n/label :t/ok-got-it)]]]])
 
 (defn unpaired []
   [react/view {:flex             1
@@ -291,23 +110,15 @@
     [react/view {:margin-bottom  32
                  :flex-direction :column
                  :align-items    :center}
-     [react/touchable-highlight
+     [quo/button
       {:on-press #(re-frame/dispatch [:keycard.login.ui/pair-card-pressed])}
-      [react/view {:background-color colors/blue-light
-                   :align-items      :center
-                   :justify-content  :center
-                   :flex-direction   :row
-                   :width            133
-                   :height           44
-                   :border-radius    10}
-       [react/text {:style {:color colors/blue}}
-        (i18n/label :t/pair-this-card)]]]
+      (i18n/label :t/pair-this-card)]
      [react/view {:margin-top 27}
-      [react/touchable-highlight
-       {:on-press #(re-frame/dispatch [:keycard.login.ui/dismiss-pressed])}
-       [react/text {:style {:color colors/blue}}
-        (i18n/label :t/dismiss)]]]]]])
+      [quo/button {:type     :secondary
+                   :on-press #(re-frame/dispatch [:keycard.login.ui/dismiss-pressed])}
+       (i18n/label :t/dismiss)]]]]])
 
+;; NOTE(Ferossgp): Seems like it should be in popover
 (defn not-keycard []
   [react/view {:flex             1
                :justify-content  :center
@@ -336,7 +147,8 @@
                    :style  {:width  144
                             :height 120}}]
      [react/view {:margin-top 40}
-      [react/touchable-highlight {:on-press #(.openURL react/linking "https://keycard.status.im")}
+      [react/touchable-highlight {:on-press #(.openURL ^js react/linking
+                                                       constants/keycard-integration-link)}
        [react/view {:flex-direction  :row
                     :align-items     :center
                     :justify-content :center}
@@ -346,199 +158,224 @@
         [vector-icons/tiny-icon :tiny-icons/tiny-external {:color           colors/blue
                                                            :container-style {:margin-left 5}}]]]]]
     [react/view {:margin-bottom 32}
-     [react/touchable-highlight
-      {:on-press #(re-frame/dispatch [:keycard.login.ui/got-it-pressed])}
-      [react/view {:background-color colors/blue-light
-                   :align-items      :center
-                   :justify-content  :center
-                   :flex-direction   :row
-                   :width            133
-                   :height           44
-                   :border-radius    10}
-       [react/text {:style {:color colors/blue}}
-        (i18n/label :t/ok-got-it)]]]]]])
+     [quo/button {:on-press #(re-frame/dispatch [:navigate-back])}
+      (i18n/label :t/ok-got-it)]]]])
 
-(defview login-pin []
-  (letsubs [pin [:hardwallet/pin]
-            enter-step [:hardwallet/pin-enter-step]
-            status [:hardwallet/pin-status]
-            error-label [:hardwallet/pin-error-label]
-            {:keys [address name] :as account} [:multiaccounts/login]]
-    [react/view styles/container
-     [toolbar/toolbar
-      {:transparent? true
-       :style        {:margin-top 32}}
-      [toolbar/nav-text
-       {:handler #(re-frame/dispatch [:keycard.login.pin.ui/cancel-pressed])
-        :style   {:padding-left 21}}
-       (i18n/label :t/cancel)]
-      [react/text {:style {:color colors/gray}}
-       (i18n/label :t/step-i-of-n {:number 2
-                                   :step   1})]
-      [react/view {:margin-right 20}
-       [react/touchable-highlight
-        {:on-press #(re-frame/dispatch [:keycard.login.pin.ui/more-icon-pressed])}
-        [vector-icons/icon :main-icons/more {:color           colors/black
-                                             :container-style {:margin-left 5}}]]]]
-     [react/view {:flex            1
-                  :flex-direction  :column
-                  :justify-content :space-between
-                  :align-items     :center
-                  :margin-top      60}
-      [react/view {:flex-direction  :column
-                   :flex            1
-                   :justify-content :center
-                   :align-items     :center}
-       [react/view {:margin-horizontal 16
-                    :flex-direction    :column}
-        [react/view {:justify-content :center
-                     :align-items     :center
-                     :flex-direction  :row}
-         [react/view {:width           69
-                      :height          69
-                      :justify-content :center
-                      :align-items     :center}
-          ;;TODO this should be done in a subscription
-          [photos/photo (multiaccounts/displayed-photo account) {:size 61}]
-          [react/view {:justify-content  :center
-                       :align-items      :center
-                       :width            24
-                       :height           24
-                       :border-radius    24
-                       :position         :absolute
-                       :right            0
-                       :bottom           0
-                       :background-color :white
-                       :border-width     1
-                       :border-color     colors/black-transparent}
-           [react/image {:source (resources/get-image :keycard-key)
-                         :style  {:width  8
-                                  :height 14}}]]]]
-        [react/text {:style           {:text-align  :center
-                                       :margin-top  12
-                                       :color       colors/black
-                                       :font-weight "500"}
-                     :number-of-lines 1
-                     :ellipsize-mode  :middle}
-         name]
-        [react/text {:style           {:text-align  :center
-                                       :margin-top  4
-                                       :color       colors/gray
-                                       :font-family "monospace"}
-                     :number-of-lines 1
-                     :ellipsize-mode  :middle}
-         (utils.core/truncate-str address 14 true)]]]
-      [pin.views/pin-view
-       {:pin         pin
-        :status      status
-        :error-label error-label
-        :step        enter-step}]
-      [react/view {:margin-bottom 32}
-       [react/touchable-highlight
-        {:on-press #(re-frame/dispatch [:keycard.login.ui/recover-key-pressed])}
-        [react/text {:style {:color colors/blue}}
-         (i18n/label :t/recover-key)]]]]]))
+(defn photo [_ _]
+  (reagent/create-class
+   {:should-component-update
+    (fn [_ [_ old-account] [_ new-account]]
+      (and (not (nil? new-account))
+           (and (not (:photo-path old-account))
+                (nil? (:photo-path new-account)))))
 
-(defview login-connect-card []
-  (letsubs [status [:hardwallet/pin-status]
-            {:keys [address name] :as account} [:multiaccounts/login]]
-    (let [in-progress? (= status :verifying)]
+    :reagent-render
+    (fn [account small-screen?]
+      ;;TODO this should be done in a subscription
+      [photos/photo (multiaccounts/displayed-photo account)
+       {:size (if small-screen? 45 61)}])}))
+
+(defn access-is-reset [{:keys [hide-login-actions?]}]
+  [react/view
+   {:style {:flex        1
+            :align-items :center}}
+   [react/view
+    {:style {:flex            1
+             :align-items     :center
+             :justify-content :center}}
+    [react/view
+     {:style
+      {:background-color colors/green-transparent-10
+       :margin-bottom    32
+       :width            40
+       :height           40
+       :align-items      :center
+       :justify-content  :center
+       :border-radius    20}}
+     [vector-icons/icon
+      :main-icons/check
+      {:color colors/green}]]
+    [react/text {:style {:typography :header}}
+     (i18n/label :t/keycard-access-reset)]
+    [react/text (i18n/label :t/keycard-can-use-with-new-passcode)]]
+   (when-not hide-login-actions?
+     [react/view
+      {:style {:width         160
+               :margin-bottom 15}}
+      [react/view {:flex-direction :row
+                   :height         52}
+       [quo/button {:on-press #(re-frame/dispatch
+                                [::keycard.login/login-after-reset])}
+        (i18n/label :t/open)]]])])
+
+(defn frozen-card []
+  [frozen-card.view/frozen-card
+   {:show-dismiss-button? false}])
+
+(defn blocked-card []
+  [react/view {:style {:flex        1
+                       :align-items :center}}
+   [react/view {:margin-top        24
+                :margin-horizontal 24
+                :align-items       :center}
+    [react/view {:background-color colors/red-transparent-10
+                 :width            32
+                 :height           32
+                 :border-radius    16
+                 :align-items      :center
+                 :justify-content  :center}
+     [vector-icons/icon
+      :main-icons/cancel
+      {:color  colors/red
+       :width  20
+       :height 20}]]
+    [react/text {:style {:typography    :title-bold
+                         :margin-top    16
+                         :margin-bottom 8}}
+     (i18n/label :t/keycard-is-blocked-title)]
+    [react/text {:style {:color      colors/gray
+                         :text-align :center}}
+     (i18n/label :t/keycard-is-blocked-details)]
+    [react/text "\n"]
+    [react/nested-text
+     {:style {:color      colors/gray
+              :text-align :center}}
+     (i18n/label :t/keycard-is-blocked-instructions)
+     [{} " "]
+     [{:style    {:color colors/blue}
+       :on-press #(.openURL ^js react/linking "https://status.im/faq/#keycard")}
+      (i18n/label :t/learn-more)]]]])
+
+(defn- step-view [step]
+  [react/view
+   {:style {:flex            1
+            :justify-content :center
+            :align-items     :center}}
+   [react/text {:style {:typography :title-bold :text-align :center}}
+    (i18n/label :t/keycard-reset-passcode)]
+   [react/text {:style {:color colors/gray}}
+    (i18n/label :t/keycard-enter-new-passcode {:step step})]])
+
+(defview login-pin [{:keys [back-button-handler
+                            hide-login-actions?
+                            default-enter-step]
+                     :or   {default-enter-step :login}}]
+  (letsubs [pin [:keycard/pin]
+            enter-step [:keycard/pin-enter-step]
+            status [:keycard/pin-status]
+            error-label [:keycard/pin-error-label]
+            login-multiaccount [:multiaccounts/login]
+            multiaccount [:multiaccount]
+            small-screen? [:dimensions/small-screen?]
+            retry-counter [:keycard/retry-counter]]
+    (let [{:keys [name] :as account} (or login-multiaccount multiaccount)
+          ;; TODO(rasom): this hack fixes state mess when more then two
+          ;; pin-view instances are used at the same time. Should be properly
+          ;; refactored instead
+          enter-step                 (or enter-step default-enter-step)]
       [react/view styles/container
-       [toolbar/toolbar
-        {:transparent? true
-         :style        {:margin-top 32}}
-        nil
-        [react/text {:style {:color colors/gray}}
-         (i18n/label :t/step-i-of-n {:number 2
-                                     :step   2})]
-        [react/view {:margin-right 20}
-         [react/touchable-highlight
-          {:on-press #(re-frame/dispatch [:keycard.login.pin.ui/more-icon-pressed])}
-          [vector-icons/icon :main-icons/more {:color           colors/black
-                                               :container-style {:margin-left 5}}]]]]
+       [topbar/topbar
+        {:accessories [(when-not hide-login-actions?
+                         {:icon    :main-icons/more
+                          :handler #(re-frame/dispatch [:keycard.login.pin.ui/more-icon-pressed])})]
+         :content     (cond
+                        (= :reset enter-step)
+                        [step-view 1]
+
+                        (= :reset-confirmation enter-step)
+                        [step-view 2]
+
+                        (and (= :puk enter-step)
+                             (not= :blocked-card status))
+                        [react/view
+                         {:style {:flex            1
+                                  :justify-content :center
+                                  :align-items     :center}}
+                         [react/text {:style {:color colors/gray}}
+                          (i18n/label :t/enter-puk-code)]])
+         :navigation
+         {:icon                :main-icons/arrow-left
+          :accessibility-label :back-button
+          :handler             #(re-frame/dispatch
+                                 [(or back-button-handler
+                                      :keycard.login.pin.ui/cancel-pressed)])}}]
        [react/view {:flex            1
                     :flex-direction  :column
                     :justify-content :space-between
-                    :align-items     :center
-                    :margin-top      15}
+                    :align-items     :center}
         [react/view {:flex-direction  :column
                      :justify-content :center
-                     :align-items     :center}
+                     :align-items     :center
+                     :height          140}
          [react/view {:margin-horizontal 16
                       :flex-direction    :column}
           [react/view {:justify-content :center
                        :align-items     :center
                        :flex-direction  :row}
-           [react/view {:width           69
-                        :height          69
+           [react/view {:width           (if small-screen? 50 69)
+                        :height          (if small-screen? 50 69)
                         :justify-content :center
                         :align-items     :center}
-            ;;TODO this should be done in a subscription
-            [photos/photo (multiaccounts/displayed-photo account) {:size 61}]
+            [photo account small-screen?]
             [react/view {:justify-content  :center
                          :align-items      :center
-                         :width            24
-                         :height           24
-                         :border-radius    24
+                         :width            (if small-screen? 18 24)
+                         :height           (if small-screen? 18 24)
+                         :border-radius    (if small-screen? 18 24)
                          :position         :absolute
                          :right            0
                          :bottom           0
-                         :background-color :white
+                         :background-color colors/white
                          :border-width     1
                          :border-color     colors/black-transparent}
              [react/image {:source (resources/get-image :keycard-key)
-                           :style  {:width  8
-                                    :height 14}}]]]]
+                           :style  {:width  (if small-screen? 6 8)
+                                    :height (if small-screen? 11 14)}}]]]]
           [react/text {:style           {:text-align  :center
-                                         :margin-top  12
+                                         :margin-top  (if small-screen? 8 12)
                                          :color       colors/black
                                          :font-weight "500"}
                        :number-of-lines 1
                        :ellipsize-mode  :middle}
-           name]
-          [react/text {:style           {:text-align  :center
-                                         :margin-top  4
-                                         :color       colors/gray
-                                         :font-family "monospace"}
-                       :number-of-lines 1
-                       :ellipsize-mode  :middle}
-           (utils.core/truncate-str address 14 true)]]]
-        [react/view {:margin-bottom   12
-                     :flex            1
-                     :align-items     :center
-                     :justify-content :center}
-         [react/image {:source      (resources/get-image :keycard-phone)
-                       :resize-mode :center
-                       :style       {:width  200
-                                     :height 211}}]
-         [react/view {:margin-top 10}
-          [react/text {:style {:text-align  :center
-                               :color       colors/gray
-                               :font-size   15
-                               :line-height 22}}
-           (i18n/label :t/hold-card)]]]
-        [react/view {:margin-bottom 50
-                     :height        30}
-         (when in-progress?
-           [react/activity-indicator {:size      :large
-                                      :animating true}])]]])))
+           name]]]
+        (cond
+          (= :after-unblocking status)
+          [access-is-reset
+           {:hide-login-actions? hide-login-actions?}]
+
+          (= :frozen-card status)
+          [frozen-card]
+
+          (= :blocked-card status)
+          [blocked-card]
+
+          :else
+          [pin.views/pin-view
+           {:pin                     pin
+            :retry-counter           retry-counter
+            :small-screen?           small-screen?
+            :status                  status
+            :error-label             error-label
+            :step                    enter-step
+            :save-password-checkbox? (not (contains?
+                                           #{:reset :reset-confirmation :puk}
+                                           enter-step))}])
+        (when-not hide-login-actions?
+          [toolbar/toolbar
+           {:center [quo/button
+                     {:on-press #(re-frame/dispatch [:multiaccounts.recover.ui/recover-multiaccount-button-pressed])
+                      :type     :secondary}
+                     (i18n/label :t/recover-key)]}])]])))
 
 (defn- more-sheet-content []
-  [react/view {:flex           1
-               :flex-direction :row
-               :margin-top     18}
-   [react/view {:flex 1}
-    [list-item/list-item
-     {:theme     :action
-      :title     :t/create-new-key
-      :icon      :main-icons/profile
-      :on-press  #(re-frame/dispatch [:keycard.login.ui/create-new-key-pressed])}]
-    [list-item/list-item
-     {:theme     :action
-      :title     :t/add-another-key
-      :icon      :main-icons/add
-      :on-press  #(re-frame/dispatch [:keycard.login.ui/add-key-pressed])}]]])
+  [react/view {:flex 1}
+   [quo/list-item
+    {:theme    :accent
+     :title    (i18n/label :t/create-new-key)
+     :icon     :main-icons/profile
+     :on-press #(do
+                  (re-frame/dispatch [:bottom-sheet/hide])
+                  (re-frame/dispatch [:multiaccounts.create.ui/get-new-key]))}]])
 
 (def more-sheet
-  {:content        more-sheet-content
-   :content-height 149})
+  {:content more-sheet-content})

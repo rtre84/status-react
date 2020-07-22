@@ -7,7 +7,6 @@
    :justify-content :space-between
    :padding-top     16
    :padding-left    16
-   :padding-right   24
    :margin-bottom   11})
 
 (def message-header
@@ -19,8 +18,8 @@
    :padding-right   24
    :margin-bottom   19})
 
-(def message
-  {:background-color        :white
+(defn message []
+  {:background-color        colors/white
    :border-top-right-radius 16
    :border-top-left-radius  16
    :padding-bottom          40})
@@ -35,8 +34,27 @@
    :border-width      1
    :padding           8})
 
-(def sheet
-  {:background-color        :white
+(defn sheet []
+  {:background-color        colors/white
    :border-top-right-radius 16
    :border-top-left-radius  16
    :padding-bottom          40})
+
+(defn sign-with-keycard-button [disabled?]
+  {:background-color   (if (colors/dark?) "#27D8B9" colors/black-light)
+   :padding-top        2
+   :border-radius      8
+   :width              182
+   :height             44
+   :flex-direction     :row
+   :justify-content    :center
+   :align-items        :center
+   :opacity            (if disabled? 0.1 1)
+   :padding-horizontal 12})
+
+(defn sign-with-keycard-button-text [disabled?]
+  {:padding-right      2
+   :padding-left       16
+   :color              (if disabled? colors/black colors/white-persist)
+   :padding-horizontal 16
+   :padding-vertical   10})

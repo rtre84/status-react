@@ -18,22 +18,17 @@
 
   [section-list {:sections [{:title \"\" :key :unik :render-fn render :data {:title  \"\" :subtitle \"\"}}]}]
   "
-  (:require [clojure.string :as string]
-            [reagent.core :as reagent]
-            [status-im.i18n :as i18n]
-            [status-im.ui.components.animation :as animation]
-            [status-im.ui.components.checkbox.view :as checkbox]
-            [status-im.ui.components.colors :as colors]
+  (:require [reagent.core :as reagent]
             [status-im.ui.components.icons.vector-icons :as vector-icons]
-            [status-im.ui.components.list-item.views :as list-item]
+            [quo.core :as quo]
             [status-im.ui.components.list.styles :as styles]
+            [status-im.ui.components.radio :as radio]
             [status-im.ui.components.react :as react]
             [status-im.utils.platform :as platform]
-            [status-im.ui.components.radio :as radio])
-  (:require-macros [status-im.utils.views :as views]))
+            ["react-native" :as react-native]))
 
-(def flat-list-class (react/get-class "FlatList"))
-(def section-list-class (react/get-class "SectionList"))
+(def flat-list-class (reagent/adapt-react-class (.-FlatList react-native)))
+(def section-list-class (reagent/adapt-react-class (.-SectionList react-native)))
 
 ;;TODO THIS NAMESPACE is DEPRECATED, use status-im.ui.components.list-item.views
 ;;TODO DEPRECATED, use status-im.ui.components.list-item.views
@@ -68,13 +63,6 @@
    [react/image {:source (if (fn? source) (source) source)
                  :style  (merge styles/item-image image-style)}]])
 ;;TODO DEPRECATED, use status-im.ui.components.list-item.views
-(defn item-primary
-  ([s] (item-primary nil s))
-  ([{:keys [style] :as props} s]
-   [react/text (merge {:style (merge styles/primary-text style)}
-                      (dissoc props :style))
-    s]))
-;;TODO DEPRECATED, use status-im.ui.components.list-item.views
 (defn item-primary-only
   ([s] (item-primary-only nil s))
   ([{:keys [style] :as props} s]
@@ -82,28 +70,9 @@
                       (dissoc props :style))
     s]))
 ;;TODO DEPRECATED, use status-im.ui.components.list-item.views
-(defn item-secondary
-  ([s] (item-secondary nil s))
-  ([{:keys [style]} s]
-   [react/text
-    {:style           (merge styles/secondary-text style)
-     :ellipsize-mode  :middle
-     :number-of-lines 1}
-    s]))
-;;TODO DEPRECATED, use status-im.ui.components.list-item.views
 (defn item-content
   [& children]
   (into [react/view {:style styles/item-content-view}] (keep identity children)))
-
-;;TODO DEPRECATED, use status-im.ui.components.list-item.views
-(defn list-item-with-checkbox
-  [{:keys [on-value-change style checked? on-long-press] :as props} item]
-  [react/touchable-highlight (merge {:on-press #(on-value-change (not checked?))}
-                                    (when on-long-press
-                                      {:on-long-press on-long-press}))
-   (conj item
-         [react/view {:style (merge style styles/item-checkbox)}
-          [checkbox/checkbox props]])])
 
 ;;TODO DEPRECATED, use status-im.ui.components.list-item.views
 (defn list-item-with-radio-button
@@ -113,65 +82,9 @@
          [react/view {:style (merge style styles/item-checkbox)}
           [radio/radio (:checked? props)]])])
 
-(def item-icon-forward
-  [item-icon {:icon      :main-icons/next
-              :style     {:width 12}
-              :icon-opts {:color colors/white}}])
-
 ;;TODO DEPRECATED, use status-im.ui.components.list-item.views
-(defn big-list-item
-  [{:keys [style text text-color text-style subtext value action-fn active? destructive? hide-chevron?
-           accessory-value text-color new? activity-indicator
-           accessibility-label icon icon-color image-source icon-content]
-    :or   {icon-color colors/blue
-           text-color colors/black
-           value ""
-           active? true
-           style {}}}]
-  {:pre [text
-         (or (nil? accessibility-label) (keyword? accessibility-label))]}
-  [react/touchable-highlight
-   {:on-press action-fn
-    :style style
-    :accessibility-label accessibility-label
-    :disabled (not active?)}
-   [react/view styles/settings-item
-    (cond
-      icon
-      [react/view (styles/settings-item-icon icon-color subtext)
-       [vector-icons/icon icon {:color icon-color}]]
-      image-source
-      [react/image {:source {:uri image-source}
-                    :style   styles/big-item-image}]
-      activity-indicator
-      [react/view (styles/settings-item-icon icon-color subtext)
-       [react/activity-indicator activity-indicator]])
-    (if subtext
-      [react/view {:style styles/settings-item-text-container}
-       [react/view {:style styles/settings-item-main-text-container}
-        (when new?
-          [react/view {:style styles/new-label}
-           [react/text {:style styles/new-label-text}
-            (string/upper-case (i18n/label :t/new))]])
-        [react/text {:style (merge (styles/settings-item-text text-color) text-style)}
-         text]]
-       [react/view {:style {:margin-top 2
-                            :justify-content :flex-start}}
-        [react/text {:style styles/settings-item-subtext
-                     :number-of-lines 2}
-         subtext]]]
-      [react/text {:style           (merge (styles/settings-item-text text-color) text-style)
-                   :number-of-lines 1}
-       text])
-    (when accessory-value
-      [react/text {:style           styles/settings-item-value
-                   :number-of-lines 1}
-       (str accessory-value)])
-    (when-not hide-chevron?
-      [vector-icons/icon :main-icons/next {:color colors/gray-transparent-40}])]])
-
 (defn- wrap-render-fn [f]
-  (fn [data]
+  (fn [^js data]
     (reagent/as-element (f (.-item data) (.-index data) (.-separators data)))))
 
 (defn- wrap-key-fn [f]
@@ -183,41 +96,17 @@
 
 (def default-separator [react/view styles/separator])
 
-(def default-header [react/view styles/list-header-footer-spacing])
-
-(def default-footer [react/view styles/list-header-footer-spacing])
-
 (defn- base-list-props
   [{:keys [key-fn render-fn empty-component header footer separator default-separator?]}]
   (let [separator (or separator (when (and platform/ios? default-separator?) default-separator))]
-    (merge (when key-fn          {:keyExtractor (wrap-key-fn key-fn)})
-           (when render-fn       {:renderItem (wrap-render-fn render-fn)})
-           (when separator       {:ItemSeparatorComponent (fn [] (reagent/as-element separator))})
-           (when empty-component {:ListEmptyComponent (fn [] (reagent/as-element empty-component))})
-           (when header          {:ListHeaderComponent (fn [] (reagent/as-element header))})
-           (when footer          {:ListFooterComponent (fn [] (reagent/as-element footer))}))))
-
-;; Workaround an issue in reagent that does not consider JS array as JS value
-;; This forces clj <-> js serialization and breaks clj semantic
-;; See https://github.com/reagent-project/reagent/issues/335
-
-(deftype Item [value]
-  IEncodeJS
-  (-clj->js [x] (.-value x))
-  (-key->js [x] (.-value x))
-  IEncodeClojure
-  (-js->clj [x _] (.-value x)))
-
-(defn- to-js-array
-  "Converts a collection to a JS array (but leave content as is)"
-  [coll]
-  (let [arr (array)]
-    (doseq [x coll]
-      (.push arr x))
-    arr))
-
-(defn- wrap-data [o]
-  (Item. (to-js-array o)))
+    (merge (when key-fn            {:keyExtractor (wrap-key-fn key-fn)})
+           (when render-fn         {:renderItem (wrap-render-fn render-fn)})
+           (when separator         {:ItemSeparatorComponent (fn [] (reagent/as-element separator))})
+           (when empty-component   {:ListEmptyComponent (fn [] (reagent/as-element empty-component))})
+           ;; header and footer not wrapped in anonymous function to prevent re-creation on every re-render
+           ;; More details can be found here - https://github.com/facebook/react-native/issues/13602#issuecomment-300608431
+           (when header            {:ListHeaderComponent (reagent/as-element header)})
+           (when footer            {:ListFooterComponent (reagent/as-element footer)}))))
 
 (defn flat-list
   "A wrapper for FlatList.
@@ -230,7 +119,7 @@
      [class
       (merge (base-list-props props)
              props
-             {:data (wrap-data data)})])))
+             {:data (to-array data)})])))
 
 (defn flat-list-generic-render-fn
   "A generic status-react specific `render-fn` for `list-item`.
@@ -238,14 +127,14 @@
   `list-item/list-item` config map and `companent`."
   [item _]
   (cond
-    (map? item)    [list-item/list-item item]
+    (map? item)    [quo/list-item item]
     (vector? item) item
     (nil? item)    nil
     :else          [item]))
 
 (defn- wrap-render-section-header-fn [f]
-  (fn [data]
-    (let [section (.-section data)]
+  (fn [^js data]
+    (let [^js section (.-section data)]
       (reagent/as-element (f {:title (.-title section)
                               :data  (.-data section)})))))
 
@@ -260,7 +149,7 @@
    (if-let [f (:render-fn props)]
      (assoc (dissoc props :render-fn) :renderItem (wrap-render-fn f))
      props)
-   :data wrap-data))
+   :data to-array))
 ;;TODO DEPRECATED, use status-im.ui.components.list-item.views
 (defn section-list
   "A wrapper for SectionList.
@@ -278,49 +167,3 @@
           {:sections            (clj->js (map wrap-per-section-render-fn sections))
            :renderSectionHeader (wrap-render-section-header-fn render-section-header-fn)
            :style               style})])
-;;TODO DEPRECATED, use status-im.ui.components.list-item.views
-(defn render-action [{:keys [label subtext accessibility-label icon action disabled?]}
-                     {:keys [action-style action-label-style action-subtext-style icon-opts]}]
-  [react/touchable-highlight {:on-press action}
-   [react/view {:accessibility-label accessibility-label}
-    [item
-     (when icon
-       [item-icon {:icon      icon
-                   :style     (merge styles/action
-                                     action-style
-                                     (when disabled? styles/action-disabled))
-                   :icon-opts (merge {:color :white}
-                                     icon-opts
-                                     (when disabled? {:color colors/gray}))}])
-     (if-not subtext
-       [item-primary-only {:style (merge styles/action-label
-                                         (action-label-style false)
-                                         (when disabled? styles/action-label-disabled))}
-        label]
-       [item-content
-        [item-primary {:style (merge styles/action-label
-                                     (action-label-style true)
-                                     (when disabled? styles/action-label-disabled))}
-         label]
-        [item-secondary {:style (merge styles/action-label
-                                       action-subtext-style
-                                       (when disabled? styles/action-label-disabled))}
-         subtext]])
-
-     item-icon-forward]]])
-;;TODO DEPRECATED, use status-im.ui.components.list-item.views
-(defn action-list [actions {:keys [container-style action-separator-style] :as styles}]
-  [react/view (merge styles/action-list container-style)
-   [flat-list
-    {:separator (when platform/ios?
-                  [react/view (merge styles/action-separator
-                                     action-separator-style)])
-     :data      actions
-     :key-fn    (fn [_ i] (str i))
-     :render-fn #(render-action % styles)}]])
-;;TODO DEPRECATED, use status-im.ui.components.list-item.views
-(defn list-with-label [{:keys [style]} label list]
-  [react/view (merge styles/list-with-label-wrapper style)
-   [react/text {:style styles/label}
-    label]
-   list])

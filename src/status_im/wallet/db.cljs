@@ -1,50 +1,13 @@
 (ns status-im.wallet.db
-  (:require [cljs.spec.alpha :as spec]
-            [status-im.i18n :as i18n]
-            status-im.ui.screens.wallet.request.db
-            status-im.ui.screens.wallet.send.db
+  (:require [status-im.i18n :as i18n]
             [status-im.utils.money :as money]
             [status-im.utils.priority-map :refer [empty-transaction-map]]))
-
-(spec/def :wallet.send/recipient string?)
-
-(spec/def :wallet/send (spec/keys :req-un [:wallet.send/recipient]))
-
-(spec/def :wallet/balance-loading? (spec/nilable boolean?))
-
-;; TODO these key specs are not needed, they don't do anything
-(spec/def :wallet/errors any?)
-(spec/def :wallet/transactions any?)
-(spec/def :wallet/transactions-queue any?)
-(spec/def :wallet/edit any?)
-(spec/def :wallet/current-tab any?)
-(spec/def :wallet/current-transaction any?)
-(spec/def :wallet/modal-history? any?)
-(spec/def :wallet/visible-tokens any?)
-(spec/def :wallet/currency any?)
-(spec/def :wallet/balance any?)
-(spec/def :wallet/filters set?)
-
-(spec/def :wallet/wallet (spec/keys :opt-un [:wallet/send-transaction
-                                             :wallet/request-transaction
-                                             :wallet/transactions-queue
-                                             :wallet/balance-loading?
-                                             :wallet/errors
-                                             :wallet/transactions
-                                             :wallet/edit
-                                             :wallet/filters
-                                             :wallet/current-tab
-                                             :wallet/current-transaction
-                                             :wallet/modal-history?
-                                             :wallet/visible-tokens
-                                             :wallet/currency
-                                             :wallet/balance]))
 
 (defn- too-precise-amount?
   "Checks if number has any extra digit beyond the allowed number of decimals.
   It does so by checking the number against its rounded value."
   [amount decimals]
-  (let [bn (money/bignumber amount)]
+  (let [^js bn (money/bignumber amount)]
     (not (.eq bn
               (.round bn decimals)))))
 
@@ -75,8 +38,15 @@
     0))
 
 (defn remove-transactions-since-block
-  [transactions block]
-  (into empty-transaction-map
-        (drop-while (fn [[k v]]
-                      (>= (int (:block v)) block))
-                    transactions)))
+  [accounts block]
+  (reduce-kv (fn [acc account-address account]
+               (assoc acc account-address
+                      (update account
+                              :transactions
+                              (fn [transactions]
+                                (into empty-transaction-map
+                                      (drop-while (fn [[_ v]]
+                                                    (>= (int (:block v)) block))
+                                                  transactions))))))
+             {}
+             accounts))

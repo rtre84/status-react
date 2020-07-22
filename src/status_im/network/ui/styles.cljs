@@ -4,8 +4,7 @@
             [status-im.utils.styles :as styles]))
 
 (def wrapper
-  {:flex             1
-   :background-color :white})
+  {:flex             1})
 
 (def badge-name-text
   {:font-size 17})
@@ -13,9 +12,6 @@
 (styles/def badge-connected-text
   {:color   colors/gray
    :ios     {:margin-top 5}})
-
-(def paste-json-text-input
-  {:font-size 17})
 
 (def connect-button-container
   {:margin-top        8
@@ -31,7 +27,7 @@
    :ios              {:opacity 0.9}})
 
 (def connect-button-label
-  {:color     colors/white
+  {:color     colors/white-persist
    :font-size 17})
 
 (def connect-button-description
@@ -39,7 +35,7 @@
    :margin-top 8
    :height     20})
 
-(styles/def network-config-container
+(styles/defn network-config-container []
   {:height            160
    :margin-top        8
    :padding-top       16
@@ -54,30 +50,6 @@
   {:font-size   17
    :ios         {:opacity 0.8}
    :android     {:opacity 0.4}})
-
-(def edit-button-container
-  {:align-items       :center
-   :margin-vertical   16
-   :margin-horizontal 16})
-
-(styles/def edit-button
-  {:height           52
-   :align-items      :center
-   :justify-content  :center
-   :background-color colors/blue
-   :border-radius    8
-   :ios              {:width 343}
-   :android          {:width 328}})
-
-(def edit-button-label
-  {:color     colors/blue
-   :font-size 17})
-
-(def edit-button-description
-  {:text-align :center
-   :color      colors/gray
-   :margin-top 8
-   :font-size  14})
 
 (defn network-icon [connected? size]
   {:width            size
@@ -95,7 +67,6 @@
 
 (styles/def network-item
   {:flex-direction     :row
-   :background-color   :white
    :align-items        :center
    :padding-horizontal 16
    :ios                {:height 64}
@@ -114,12 +85,5 @@
    :margin-horizontal 12
    :margin-vertical   15})
 
-(def delete-button
-  {:background-color colors/white})
-
-(def delete-button-text
-  {:color colors/red})
-
 (def container
-  (merge components.styles/flex
-         {:background-color colors/white}))
+  components.styles/flex)

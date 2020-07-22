@@ -1,6 +1,5 @@
 (ns status-im.ui.screens.profile.seed.styles
-  (:require [status-im.ui.components.colors :as colors]
-            [status-im.ui.components.styles :as common.styles]))
+  (:require [status-im.ui.components.colors :as colors]))
 
 (def intro-image
   {:margin-top  16
@@ -53,15 +52,11 @@
 (def twelve-words-spacer
   {:flex 1})
 
-(def twelve-words-button-container
-  {:align-items :flex-end})
-
 (def twelve-words-columns
   {:margin-top       8
    :margin-bottom    16
    :flex-direction   :row
    :border-radius    8
-   :background-color colors/white
    :border-width     1
    :border-color     colors/gray-lighter})
 
@@ -73,20 +68,10 @@
   {:flex    1
    :padding 16})
 
-(def enter-word-row
-  {:flex-direction :row})
-
-(def enter-word-label
-  {:font-size 14})
-
-(def enter-word-n
-  {:margin-left 8
-   :font-size   14
-   :color       colors/gray})
-
 (def enter-word-n-description
-  {:font-size 14
-   :color     colors/gray})
+  {:font-size       14
+   :color           colors/gray
+   :margin-vertical 16})
 
 (def finish-container
   {:flex               1
@@ -99,7 +84,7 @@
    :justify-content :center})
 
 (def ok-icon
-  {:color  :white
+  {:color  colors/white
    :width  41
    :height 41})
 

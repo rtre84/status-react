@@ -9,7 +9,7 @@
             [status-im.ui.components.react :as react]
             [status-im.ui.screens.browser.styles :as styles]
             [status-im.ui.components.colors :as colors]
-            [status-im.ui.components.button :as button])
+            [quo.core :as quo])
   (:require-macros [status-im.utils.views :as views]))
 
 (defn hide-panel-anim
@@ -103,8 +103,8 @@
              [chat-icon.screen/custom-icon-view-list (:name dapps-account) (:color dapps-account)]
              [react/view styles/permissions-panel-wallet-icon-container
               (when icon
-                [icons/icon icon {:color :white}])])]
-          [react/text {:style styles/permissions-panel-title-label}
+                [icons/icon icon {:color colors/white}])])]
+          [react/text {:style styles/permissions-panel-title-label :number-of-lines 2}
            (str "\"" dapp-name "\" " title)]
           (when (= :wallet type)
             [react/view styles/permissions-account
@@ -114,16 +114,22 @@
                            :style         {:margin-horizontal 6 :color (:color dapps-account) :typography :main-medium
                                            :font-size         13}}
                (:name dapps-account)]]])
-          [react/text {:style styles/permissions-panel-description-label}
+          [react/text {:style styles/permissions-panel-description-label :number-of-lines 2}
            description]
-          [react/view {:flex-direction :row :margin-top 24}
-           [button/button
-            {:theme    :red
-             :style    {:flex 1}
-             :on-press #(re-frame/dispatch [:browser.permissions.ui/dapp-permission-denied])
-             :label    (i18n/label :t/deny)}]
-           [button/button
-            {:theme    :green
-             :style    {:flex 1}
-             :on-press #(re-frame/dispatch [:browser.permissions.ui/dapp-permission-allowed])
-             :label    (i18n/label :t/allow)}]]]]))))
+          [react/view {:style {:flex-direction    :row
+                               :justify-content   :center
+                               :margin-horizontal 8
+                               :margin-top        24}}
+           [react/view {:flex              1
+                        :margin-horizontal 8}
+            [quo/button
+             {:theme    :negative
+              :on-press #(re-frame/dispatch [:browser.permissions.ui/dapp-permission-denied])}
+             (i18n/label :t/deny)]]
+           [react/view {:flex              1
+                        :margin-horizontal 8}
+            [quo/button
+             {:theme    :positive
+              :style    {:margin-horizontal 8}
+              :on-press #(re-frame/dispatch [:browser.permissions.ui/dapp-permission-allowed])}
+             (i18n/label :t/allow)]]]]]))))
